@@ -172,7 +172,7 @@ async def save_order(order_id: str, user_id: int, data: dict, status: str, needs
             data.get("trash_type"), data.get("bags"), data.get("price"),
             data.get("worker_price"), data.get("order_time"), data.get("comment"),
             data.get("photo_id"), status, needs_price, worker_msg_id,
-            data, created_at, now,
+            json.dumps(data), created_at, now,
         )
 
 async def update_order_status(order_id: str | None, status: str) -> None:
