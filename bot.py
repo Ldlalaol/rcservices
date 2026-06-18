@@ -131,11 +131,6 @@ async def migrate_db() -> None:
                 "ALTER TABLE orders ALTER COLUMN data_json TYPE JSONB USING data_json::jsonb"
             )
 
-def order_data_from_db(value) -> dict:
-    if isinstance(value, dict):
-        return value
-    return json.loads(value)
-
 async def save_order(order_id: str, user_id: int, data: dict, status: str, needs_price: bool, worker_msg_id: int | None = None) -> None:
     now = datetime.now().isoformat(timespec="seconds")
     async with db_pool.acquire() as conn:
@@ -172,7 +167,7 @@ async def save_order(order_id: str, user_id: int, data: dict, status: str, needs
             data.get("trash_type"), data.get("bags"), data.get("price"),
             data.get("worker_price"), data.get("order_time"), data.get("comment"),
             data.get("photo_id"), status, needs_price, worker_msg_id,
-            json.dumps(data), created_at, now,
+            data, created_at, now,  # ✅ передаём dict напрямую, asyncpg сериализует в JSONB
         )
 
 async def update_order_status(order_id: str | None, status: str) -> None:
@@ -188,7 +183,7 @@ async def update_order_worker_price(order_id: str, price: int, data: dict) -> No
     async with db_pool.acquire() as conn:
         await conn.execute(
             "UPDATE orders SET worker_price = $1, data_json = $2, status = $3, updated_at = $4 WHERE order_id = $5",
-            price, json.dumps(data), "price_sent",  # ✅ Преобразуем dict в JSON-строку
+            price, data, "price_sent",  # ✅ передаём dict напрямую, asyncpg сериализует в JSONB
             datetime.now().isoformat(timespec="seconds"), order_id,
         )
 
@@ -218,7 +213,7 @@ async def fetch_order(order_id: str) -> dict | None:
         "user_id": row["user_id"],
         "status": row["status"],
         "worker_msg_id": row["worker_msg_id"],
-        "data": order_data_from_db(row["data_json"]),
+        "data": row["data_json"],  # ✅ asyncpg автоматически десериализует JSONB → dict
     }
 
 async def count_active_orders() -> int:
