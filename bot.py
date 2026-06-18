@@ -678,17 +678,33 @@ async def apt_back(message: Message, state: FSMContext):
 
 @client_router.message(IsClient(), Order.entering_apt)
 async def process_apt(message: Message, state: FSMContext):
-    apt = parse_apt(message.text)
-    if apt is None:
+    text = message.text.strip().lower()
+
+    import re
+
+    # Разрешаем: 68, 68а, 68б и т.д.
+    if not re.fullmatch(r"\d+[а-яa-z]?", text):
         await message.answer(
-            "🚫 Неверный формат. Введите номер квартиры — только цифры или цифры с буквой.\n"
-            "<i>Например: 5, 68а, 12б</i>"
+            "🚫 Введите корректный номер квартиры (например: 68 или 68А):"
         )
         return
-    await state.update_data(apt=apt)
+
+    num = int(re.match(r"\d+", text).group())
+
+    if num > 153:
+        await message.answer(
+            "🚫 Такой квартиры нет. Введите номер квартиры от 1 до 153:"
+        )
+        return
+
+    await state.update_data(apt=text.upper())
+
     data = await state.get_data()
     if data.get("editing"):
-        await state.update_data(editing=False); await show_confirm(message, state); return
+        await state.update_data(editing=False)
+        await show_confirm(message, state)
+        return
+
     await state.set_state(Order.choosing_trash)
     await message.answer("🗑 Выберите тип мусора:", reply_markup=kb_trash())
 
