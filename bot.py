@@ -23,6 +23,7 @@ from aiogram.types import (
     ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove,
     InlineKeyboardMarkup, InlineKeyboardButton,
 )
+import re
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -46,11 +47,24 @@ WORKER_ID    = 6140148323
 DATABASE_URL = os.getenv("DATABASE_URL")
 # ═══════════════════════════════════════════════════════════
 
-storage: RedisStorage | None = None  # глобальный storage, инициализируется в main()
-redis_client: Redis | None = None  # Redis клиент для FSM
+storage: RedisStorage | None = None
+redis_client: Redis | None = None
 db_pool: asyncpg.Pool | None = None
 
 ACTIVE_STATUSES = frozenset({"pending", "price_sent", "waiting_worker", "on_way"})
+
+# ── Валидация номера квартиры ─────────────────────────────
+APT_RE = re.compile(r"^(\d+)([а-яёa-z]?)$", re.IGNORECASE)
+
+def parse_apt(text: str) -> str | None:
+    m = APT_RE.match(text.strip())
+    if not m:
+        return None
+    num = int(m.group(1))
+    if num <= 0 or num > 999:
+        return None
+    letter = m.group(2).lower()
+    return str(num) + letter
 
 # ── БД ────────────────────────────────────────────────────
 def normalize_database_url(url: str) -> str:
@@ -58,11 +72,30 @@ def normalize_database_url(url: str) -> str:
         return url.replace("postgres://", "postgresql://", 1)
     return url
 
+async def _init_connection(conn: asyncpg.Connection) -> None:
+    """
+    КРИТИЧЕСКИЙ ФИКС: регистрирует кодек для JSONB, чтобы asyncpg
+    автоматически сериализовал/десериализовал dict <-> JSONB.
+    Без этого asyncpg возвращает JSONB как обычную строку (str),
+    что приводило к ошибке 'str' object is not a mapping.
+    """
+    await conn.set_type_codec(
+        "jsonb",
+        encoder=json.dumps,
+        decoder=json.loads,
+        schema="pg_catalog",
+    )
+
 async def init_db_pool() -> None:
     global db_pool
     if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL не задан. Добавьте его в .env или переменные окружения.")
-    db_pool = await asyncpg.create_pool(normalize_database_url(DATABASE_URL), min_size=1, max_size=5)
+    db_pool = await asyncpg.create_pool(
+        normalize_database_url(DATABASE_URL),
+        min_size=1,
+        max_size=5,
+        init=_init_connection,  # ← регистрируем кодек на каждое новое соединение в пуле
+    )
 
 async def close_db_pool() -> None:
     global db_pool
@@ -167,7 +200,7 @@ async def save_order(order_id: str, user_id: int, data: dict, status: str, needs
             data.get("trash_type"), data.get("bags"), data.get("price"),
             data.get("worker_price"), data.get("order_time"), data.get("comment"),
             data.get("photo_id"), status, needs_price, worker_msg_id,
-            json.dumps(data), created_at, now,  # ✅ json.dumps() для сохранения в JSONB
+            data, created_at, now,  # ← передаём dict напрямую, кодек сам сериализует в JSONB
         )
 
 async def update_order_status(order_id: str | None, status: str) -> None:
@@ -183,7 +216,7 @@ async def update_order_worker_price(order_id: str, price: int, data: dict) -> No
     async with db_pool.acquire() as conn:
         await conn.execute(
             "UPDATE orders SET worker_price = $1, data_json = $2, status = $3, updated_at = $4 WHERE order_id = $5",
-            price, json.dumps(data), "price_sent",  # ✅ json.dumps() для сохранения в JSONB
+            price, data, "price_sent",  # ← передаём dict напрямую
             datetime.now().isoformat(timespec="seconds"), order_id,
         )
 
@@ -209,11 +242,17 @@ async def fetch_order(order_id: str) -> dict | None:
         )
     if not row or row["status"] not in ACTIVE_STATUSES:
         return None
+
+    raw_data = row["data_json"]
+    # Защитный фолбэк: если по какой-то причине пришла строка — распарсим вручную.
+    if isinstance(raw_data, str):
+        raw_data = json.loads(raw_data)
+
     return {
         "user_id": row["user_id"],
         "status": row["status"],
         "worker_msg_id": row["worker_msg_id"],
-        "data": row["data_json"],  # ✅ asyncpg автоматически десериализует JSONB → dict
+        "data": raw_data,
     }
 
 async def count_active_orders() -> int:
@@ -224,7 +263,6 @@ async def count_active_orders() -> int:
         )
 
 # ── Хелперы FSM ───────────────────────────────────────────
-# FIX: мёржим данные вместо полной перезаписи, чтобы не потерять данные клиента
 async def set_client_state(bot_id: int, user_id: int, state: State, data: dict | None = None) -> None:
     key = StorageKey(bot_id=bot_id, chat_id=user_id, user_id=user_id)
     await storage.set_state(key=key, state=state)
@@ -481,18 +519,18 @@ async def worker_enter_price(message: Message, state: FSMContext, bot: Bot):
     try:
         text = message.text.strip().replace(" ", "")
         logger.info(f"Работник ввёл: '{text}'")
-        
+
         if not text.isdigit() or int(text) <= 0:
             await message.answer("🚫 Введите корректную сумму (только цифры, больше 0):")
             return
-        
+
         data = await state.get_data()
         order_id = data.get("pricing_order")
         logger.info(f"pricing_order из state: {order_id}")
-        
+
         order = await fetch_order(order_id) if order_id else None
         logger.info(f"Заявка найдена: {order is not None}")
-        
+
         if not order or order["status"] != "pending":
             logger.warning(f"Заявка не найдена или статус не 'pending': {order}")
             await message.answer("❌ Заявка не найдена.")
@@ -502,7 +540,7 @@ async def worker_enter_price(message: Message, state: FSMContext, bot: Bot):
         price = int(text)
         order_data = {**order["data"], "worker_price": price}
         logger.info(f"Сохраняю цену {price} для заявки {order_id}")
-        
+
         await update_order_worker_price(order_id, price, order_data)
         await state.set_state(Worker.ready)
         await message.answer(f"✅ Цена <b>{price} ₸</b> отправлена клиенту. Ожидайте подтверждения.")
@@ -513,16 +551,15 @@ async def worker_enter_price(message: Message, state: FSMContext, bot: Bot):
         client_text = f"💰 <b>Работник оценил вашу заявку!</b>\n\n{summary}\n\nПодтверждаете заказ?"
 
         logger.info(f"Отправляю цену клиенту {user_id}")
-        
+
         if photo_id:
             await bot.send_photo(user_id, photo=photo_id, caption=client_text, reply_markup=kb_price_confirm())
         else:
             await bot.send_message(user_id, client_text, reply_markup=kb_price_confirm())
 
-        # Мёржим данные — не перезаписываем целиком
         await set_client_state(bot.id, user_id, Order.price_confirm, {"order_id": order_id})
         logger.info(f"✅ Цена успешно отправлена для заявки {order_id}")
-        
+
     except Exception as e:
         logger.error(f"Ошибка при установке цены: {e}", exc_info=True)
         await message.answer(f"❌ Ошибка: {str(e)}")
@@ -564,7 +601,6 @@ async def worker_status(callback: CallbackQuery, bot: Bot):
             "Напишите отзыв о выполненной работе или нажмите кнопку ниже, чтобы пропустить.",
             reply_markup=kb_review(),
         )
-        # Мёржим данные — не перезаписываем целиком
         await set_client_state(bot.id, user_id, Order.leaving_review, {"review_order": order_id})
         await callback.answer("Заявка закрыта!")
 
@@ -572,7 +608,6 @@ async def worker_status(callback: CallbackQuery, bot: Bot):
 
 @client_router.message(IsClient(), CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
-    # Читаем данные ДО очистки состояния
     data     = await state.get_data()
     order_id = data.get("order_id")
     await update_order_status(order_id, "canceled")
@@ -591,7 +626,6 @@ async def help_handler(message: Message):
 
 @client_router.message(IsClient(), F.text == "❌ Отменить заявку")
 async def cancel_handler(message: Message, state: FSMContext, bot: Bot):
-    # Читаем данные ДО очистки состояния
     data          = await state.get_data()
     current_state = await state.get_state()
     order_id  = data.get("order_id")
@@ -679,7 +713,11 @@ async def process_floor(message: Message, state: FSMContext):
     if data.get("editing"):
         await state.update_data(editing=False); await show_confirm(message, state); return
     await state.set_state(Order.entering_apt)
-    await message.answer("🚪 Введите номер квартиры:", reply_markup=kb_nav())
+    await message.answer(
+        "🚪 Введите номер квартиры:\n"
+        "<i>Например: 5, 68а, 12б</i>",
+        reply_markup=kb_nav(),
+    )
 
 # ── Квартира ──────────────────────────────────────────────
 @client_router.message(IsClient(), Order.entering_apt, F.text == "◀️ Назад")
@@ -692,33 +730,17 @@ async def apt_back(message: Message, state: FSMContext):
 
 @client_router.message(IsClient(), Order.entering_apt)
 async def process_apt(message: Message, state: FSMContext):
-    text = message.text.strip().lower()
-
-    import re
-
-    # Разрешаем: 68, 68а, 68б и т.д.
-    if not re.fullmatch(r"\d+[а-яa-z]?", text):
+    apt = parse_apt(message.text)
+    if apt is None:
         await message.answer(
-            "🚫 Введите корректный номер квартиры (например: 68 или 68А):"
+            "🚫 Неверный формат. Введите номер квартиры — только цифры или цифры с буквой.\n"
+            "<i>Например: 5, 68а, 12б</i>"
         )
         return
-
-    num = int(re.match(r"\d+", text).group())
-
-    if num > 153:
-        await message.answer(
-            "🚫 Такой квартиры нет. Введите номер квартиры от 1 до 153:"
-        )
-        return
-
-    await state.update_data(apt=text.upper())
-
+    await state.update_data(apt=apt)
     data = await state.get_data()
     if data.get("editing"):
-        await state.update_data(editing=False)
-        await show_confirm(message, state)
-        return
-
+        await state.update_data(editing=False); await show_confirm(message, state); return
     await state.set_state(Order.choosing_trash)
     await message.answer("🗑 Выберите тип мусора:", reply_markup=kb_trash())
 
@@ -903,12 +925,11 @@ async def confirm_order(message: Message, state: FSMContext, bot: Bot):
         data        = await state.get_data()
         order_id    = data["order_id"]
         trash       = data.get("trash_type", "")
-        # FIX: используем or 0 чтобы избежать ошибки если bags == None
         bags        = data.get("bags") or 0
         needs_price = trash in NEEDS_PRICE or (trash == "🏠 Бытовой" and bags > 10)
 
         logger.info(f"Подтверждение заявки {order_id}, needs_price={needs_price}")
-        
+
         await save_order(
             order_id=order_id, user_id=message.from_user.id, data=data,
             status="pending" if needs_price else "waiting_worker",
