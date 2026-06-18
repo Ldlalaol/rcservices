@@ -478,36 +478,55 @@ async def worker_set_price_prompt(callback: CallbackQuery, state: FSMContext):
 
 @worker_router.message(IsWorker(), Worker.entering_price)
 async def worker_enter_price(message: Message, state: FSMContext, bot: Bot):
-    text = message.text.strip().replace(" ", "")
-    if not text.isdigit() or int(text) <= 0:
-        await message.answer("🚫 Введите корректную сумму (только цифры, больше 0):")
-        return
-    data = await state.get_data()
-    order_id = data.get("pricing_order")
-    order = await fetch_order(order_id) if order_id else None
-    if not order or order["status"] != "pending":
-        await message.answer("❌ Заявка не найдена.")
+    try:
+        text = message.text.strip().replace(" ", "")
+        logger.info(f"Работник ввёл: '{text}'")
+        
+        if not text.isdigit() or int(text) <= 0:
+            await message.answer("🚫 Введите корректную сумму (только цифры, больше 0):")
+            return
+        
+        data = await state.get_data()
+        order_id = data.get("pricing_order")
+        logger.info(f"pricing_order из state: {order_id}")
+        
+        order = await fetch_order(order_id) if order_id else None
+        logger.info(f"Заявка найдена: {order is not None}")
+        
+        if not order or order["status"] != "pending":
+            logger.warning(f"Заявка не найдена или статус не 'pending': {order}")
+            await message.answer("❌ Заявка не найдена.")
+            await state.set_state(Worker.ready)
+            return
+
+        price = int(text)
+        order_data = {**order["data"], "worker_price": price}
+        logger.info(f"Сохраняю цену {price} для заявки {order_id}")
+        
+        await update_order_worker_price(order_id, price, order_data)
         await state.set_state(Worker.ready)
-        return
+        await message.answer(f"✅ Цена <b>{price} ₸</b> отправлена клиенту. Ожидайте подтверждения.")
 
-    price = int(text)
-    order_data = {**order["data"], "worker_price": price}
-    await update_order_worker_price(order_id, price, order_data)
-    await state.set_state(Worker.ready)
-    await message.answer(f"✅ Цена <b>{price} ₸</b> отправлена клиенту. Ожидайте подтверждения.")
+        user_id  = order["user_id"]
+        photo_id = order_data.get("photo_id")
+        summary    = order_summary(order_data, include_worker_price=True)
+        client_text = f"💰 <b>Работник оценил вашу заявку!</b>\n\n{summary}\n\nПодтверждаете заказ?"
 
-    user_id  = order["user_id"]
-    photo_id = order_data.get("photo_id")
-    summary    = order_summary(order_data, include_worker_price=True)
-    client_text = f"💰 <b>Работник оценил вашу заявку!</b>\n\n{summary}\n\nПодтверждаете заказ?"
+        logger.info(f"Отправляю цену клиенту {user_id}")
+        
+        if photo_id:
+            await bot.send_photo(user_id, photo=photo_id, caption=client_text, reply_markup=kb_price_confirm())
+        else:
+            await bot.send_message(user_id, client_text, reply_markup=kb_price_confirm())
 
-    if photo_id:
-        await bot.send_photo(user_id, photo=photo_id, caption=client_text, reply_markup=kb_price_confirm())
-    else:
-        await bot.send_message(user_id, client_text, reply_markup=kb_price_confirm())
-
-    # Мёржим данные — не перезаписываем целиком
-    await set_client_state(bot.id, user_id, Order.price_confirm, {"order_id": order_id})
+        # Мёржим данные — не перезаписываем целиком
+        await set_client_state(bot.id, user_id, Order.price_confirm, {"order_id": order_id})
+        logger.info(f"✅ Цена успешно отправлена для заявки {order_id}")
+        
+    except Exception as e:
+        logger.error(f"Ошибка при установке цены: {e}", exc_info=True)
+        await message.answer(f"❌ Ошибка: {str(e)}")
+        await state.set_state(Worker.ready)
 
 @worker_router.callback_query(IsWorkerCB(), F.data.startswith("status:"))
 async def worker_status(callback: CallbackQuery, bot: Bot):
