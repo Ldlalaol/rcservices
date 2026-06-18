@@ -188,7 +188,7 @@ async def update_order_worker_price(order_id: str, price: int, data: dict) -> No
     async with db_pool.acquire() as conn:
         await conn.execute(
             "UPDATE orders SET worker_price = $1, data_json = $2, status = $3, updated_at = $4 WHERE order_id = $5",
-            price, data, "price_sent",
+            price, json.dumps(data), "price_sent",  # ✅ Преобразуем dict в JSON-строку
             datetime.now().isoformat(timespec="seconds"), order_id,
         )
 
