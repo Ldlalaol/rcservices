@@ -167,7 +167,7 @@ async def save_order(order_id: str, user_id: int, data: dict, status: str, needs
             data.get("trash_type"), data.get("bags"), data.get("price"),
             data.get("worker_price"), data.get("order_time"), data.get("comment"),
             data.get("photo_id"), status, needs_price, worker_msg_id,
-            data, created_at, now,  # ✅ передаём dict напрямую, asyncpg сериализует в JSONB
+            json.dumps(data), created_at, now,  # ✅ json.dumps() для сохранения в JSONB
         )
 
 async def update_order_status(order_id: str | None, status: str) -> None:
@@ -183,7 +183,7 @@ async def update_order_worker_price(order_id: str, price: int, data: dict) -> No
     async with db_pool.acquire() as conn:
         await conn.execute(
             "UPDATE orders SET worker_price = $1, data_json = $2, status = $3, updated_at = $4 WHERE order_id = $5",
-            price, data, "price_sent",  # ✅ передаём dict напрямую, asyncpg сериализует в JSONB
+            price, json.dumps(data), "price_sent",  # ✅ json.dumps() для сохранения в JSONB
             datetime.now().isoformat(timespec="seconds"), order_id,
         )
 
@@ -880,36 +880,42 @@ async def process_comment(message: Message, state: FSMContext):
 # ── Подтверждение заявки ──────────────────────────────────
 @client_router.message(IsClient(), Order.confirming, F.text == "✅ Подтвердить")
 async def confirm_order(message: Message, state: FSMContext, bot: Bot):
-    data        = await state.get_data()
-    order_id    = data["order_id"]
-    trash       = data.get("trash_type", "")
-    # FIX: используем or 0 чтобы избежать ошибки если bags == None
-    bags        = data.get("bags") or 0
-    needs_price = trash in NEEDS_PRICE or (trash == "🏠 Бытовой" and bags > 10)
+    try:
+        data        = await state.get_data()
+        order_id    = data["order_id"]
+        trash       = data.get("trash_type", "")
+        # FIX: используем or 0 чтобы избежать ошибки если bags == None
+        bags        = data.get("bags") or 0
+        needs_price = trash in NEEDS_PRICE or (trash == "🏠 Бытовой" and bags > 10)
 
-    await save_order(
-        order_id=order_id, user_id=message.from_user.id, data=data,
-        status="pending" if needs_price else "waiting_worker",
-        needs_price=needs_price,
-    )
-
-    if needs_price:
-        await state.set_state(Order.waiting_price)
-        await message.answer(
-            "⏳ <b>Заявка отправлена работнику!</b>\n\n"
-            "Ожидайте — работник оценит объём и пришлёт вам цену.",
-            reply_markup=ReplyKeyboardRemove(),
+        logger.info(f"Подтверждение заявки {order_id}, needs_price={needs_price}")
+        
+        await save_order(
+            order_id=order_id, user_id=message.from_user.id, data=data,
+            status="pending" if needs_price else "waiting_worker",
+            needs_price=needs_price,
         )
-    else:
-        await state.set_state(Order.waiting_worker)
-        photo_id = data.get("photo_id")
-        text = order_summary(data) + "\n\n⏳ <b>Статус: В ожидании</b>\n\nСотрудник скоро придёт к вам!"
-        if photo_id:
-            await message.answer_photo(photo=photo_id, caption=text, reply_markup=ReplyKeyboardRemove())
-        else:
-            await message.answer(text, reply_markup=ReplyKeyboardRemove())
 
-    await send_order_to_worker(bot, data, order_id, needs_price)
+        if needs_price:
+            await state.set_state(Order.waiting_price)
+            await message.answer(
+                "⏳ <b>Заявка отправлена работнику!</b>\n\n"
+                "Ожидайте — работник оценит объём и пришлёт вам цену.",
+                reply_markup=ReplyKeyboardRemove(),
+            )
+        else:
+            await state.set_state(Order.waiting_worker)
+            photo_id = data.get("photo_id")
+            text = order_summary(data) + "\n\n⏳ <b>Статус: В ожидании</b>\n\nСотрудник скоро придёт к вам!"
+            if photo_id:
+                await message.answer_photo(photo=photo_id, caption=text, reply_markup=ReplyKeyboardRemove())
+            else:
+                await message.answer(text, reply_markup=ReplyKeyboardRemove())
+
+        await send_order_to_worker(bot, data, order_id, needs_price)
+    except Exception as e:
+        logger.error(f"Ошибка при подтверждении заявки: {e}", exc_info=True)
+        await message.answer(f"❌ Ошибка при сохранении заявки: {str(e)}")
 
 @client_router.message(IsClient(), Order.confirming, F.text == "✏️ Изменить")
 async def edit_order(message: Message, state: FSMContext):
