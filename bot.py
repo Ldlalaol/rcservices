@@ -328,6 +328,7 @@ BTN = {
         "edit_photo": "🔄 Изменить фото",
         "edit_time": "🔄 Изменить время",
         "edit_comment": "🔄 Изменить комментарий",
+        "photo_done": "✅ Готово",
     },
     "kk": {
         "main_service": "🗑 Қоқысты шығару",
@@ -354,6 +355,7 @@ BTN = {
         "edit_photo": "🔄 Суретті өзгерту",
         "edit_time": "🔄 Уақытты өзгерту",
         "edit_comment": "🔄 Пікірді өзгерту",
+        "photo_done": "✅ Дамалды",
     },
 }
 
@@ -404,6 +406,15 @@ def kb_comment(lang: str):
     return ReplyKeyboardMarkup(keyboard=[
         [KeyboardButton(text=b["comment_add"]), KeyboardButton(text=b["comment_skip"])],
         [KeyboardButton(text=b["back"]), KeyboardButton(text=b["cancel"])],
+    ], resize_keyboard=True)
+
+
+def kb_photo(lang: str):
+    """Клавиатура для отправки фото: Готово и Назад"""
+    b = BTN.get(lang, BTN["ru"])
+    return ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text=b["photo_done"]), KeyboardButton(text=b["back"])],
+        [KeyboardButton(text=b["cancel"])],
     ], resize_keyboard=True)
 
 
@@ -662,6 +673,7 @@ async def ask_photo(message: Message, state: FSMContext):
     trash = data.get("trash_type", "")
     await state.set_state(Order.sending_photo)
     lang = data.get("language", "ru")
+    await state.update_data(photo_ids=[])  # Инициализируем пустой список фото
     if trash == "🏠 Бытовой" or "Бытовой" in str(trash):
         bags  = data.get("bags") or 0
         price = get_price(bags, lang)
@@ -678,15 +690,16 @@ async def ask_photo(message: Message, state: FSMContext):
                 note = f"💰 Шығару құны: <b>{price}</b>"
         
         await message.answer(
-            f"{note}\n\n📸 " + ("Пришлите фото мусора" if lang == "ru" else "Қоқыстың суретін жібер:"),
-            reply_markup=kb_nav(lang)
+            f"{note}\n\n📸 " + ("Пришлите фото мусора (можно несколько)" if lang == "ru" else "Қоқыстың суретін жібер (бірнеше болса болады)"),
+            reply_markup=kb_photo(lang)
         )
     else:
         prompt_photo = msg(lang, "photo_prompt_other", trash=trash)
-        await message.answer(prompt_photo, reply_markup=kb_nav(lang))
+        await message.answer(prompt_photo, reply_markup=kb_photo(lang))
 
 async def send_order_to_worker(bot: Bot, data: dict, order_id: str, needs_price: bool):
-    photo_id = data.get("photo_id")
+    photo_ids = data.get("photo_ids", [])
+    photo_id = data.get("photo_id") or (photo_ids[0] if photo_ids else None)
     lang = data.get("language", "ru")
     if needs_price:
         if lang == "ru":
@@ -702,6 +715,10 @@ async def send_order_to_worker(bot: Bot, data: dict, order_id: str, needs_price:
     kb = ikb_worker_new(order_id) if needs_price else ikb_worker_status(order_id)
     if photo_id:
         msg = await bot.send_photo(WORKER_ID, photo=photo_id, caption=text, reply_markup=kb)
+        # Если есть дополнительные фото, отправляем их отдельно
+        if len(photo_ids) > 1:
+            for i, pid in enumerate(photo_ids[1:], 1):
+                await bot.send_photo(WORKER_ID, photo=pid, caption=f"📸 Фото {i+1} / Сурет {i+1}")
     else:
         msg = await bot.send_message(WORKER_ID, text, reply_markup=kb)
     await update_order_worker_message(order_id, msg.message_id)
@@ -769,7 +786,8 @@ async def worker_enter_price(message: Message, state: FSMContext, bot: Bot):
     )
 
     user_id  = order["user_id"]
-    photo_id = order_data.get("photo_id")
+    photo_ids = order_data.get("photo_ids", [])
+    photo_id = order_data.get("photo_id") or (photo_ids[0] if photo_ids else None)
     client_lang = order_data.get("language", "ru")
     summary = order_summary(order_data, include_worker_price=True, lang=client_lang)
     if client_lang == "ru":
@@ -779,6 +797,10 @@ async def worker_enter_price(message: Message, state: FSMContext, bot: Bot):
 
     if photo_id:
         await bot.send_photo(user_id, photo=photo_id, caption=client_text, reply_markup=kb_price_confirm(client_lang))
+        # Если есть дополнительные фото, отправляем их отдельно
+        if len(photo_ids) > 1:
+            for i, pid in enumerate(photo_ids[1:], 1):
+                await bot.send_photo(user_id, photo=pid, caption=f"📸 Фото {i+1} / Сурет {i+1}")
     else:
         await bot.send_message(user_id, client_text, reply_markup=kb_price_confirm(client_lang))
 
@@ -1144,10 +1166,39 @@ async def photo_back(message: Message, state: FSMContext):
 
 @client_router.message(IsClient(), Order.sending_photo, F.photo)
 async def process_photo(message: Message, state: FSMContext):
-    await state.update_data(photo_id=message.photo[-1].file_id)
     data = await state.get_data()
+    lang = data.get("language", "ru")
+    photo_ids = data.get("photo_ids", [])
+    photo_ids.append(message.photo[-1].file_id)
+    await state.update_data(photo_ids=photo_ids)
+    
+    count = len(photo_ids)
+    if lang == "ru":
+        text = f"✅ Фото добавлено! (Всего: {count})"
+    else:
+        text = f"✅ Сурет қосылды! (Барлығы: {count})"
+    await message.answer(text, reply_markup=kb_photo(lang))
+
+@client_router.message(IsClient(), Order.sending_photo, F.text.startswith("✅"))
+async def photo_done(message: Message, state: FSMContext):
+    """Завершение отправки фото и переход к времени"""
+    data = await state.get_data()
+    photo_ids = data.get("photo_ids", [])
+    lang = data.get("language", "ru")
+    
+    if not photo_ids:
+        error = "❌ " + ("Пожалуйста, загрузите хотя бы одно фото" if lang == "ru" else "Кем дегенде бір суретті жүктеңіз")
+        await message.answer(error, reply_markup=kb_photo(lang))
+        return
+    
+    # Сохраняем первое фото как основное (для совместимости)
+    await state.update_data(photo_id=photo_ids[0])
+    
     if data.get("editing"):
-        await state.update_data(editing=False); await show_confirm(message, state); return
+        await state.update_data(editing=False)
+        await show_confirm(message, state)
+        return
+    
     await go_to_time(message, state)
 
 @client_router.message(IsClient(), Order.sending_photo)
@@ -1155,7 +1206,7 @@ async def photo_invalid(message: Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("language", "ru")
     error = msg(lang, "photo_invalid")
-    await message.answer(error)
+    await message.answer(error, reply_markup=kb_photo(lang))
 
 # ── Время ─────────────────────────────────────────────────
 @client_router.message(IsClient(), Order.choosing_time, F.text.startswith("◀️"))
