@@ -842,15 +842,26 @@ async def cmd_start(message: Message, state: FSMContext):
     # Читаем данные ДО очистки состояния
     data     = await state.get_data()
     order_id = data.get("order_id")
-    lang = data.get("language", "ru")  # Сохраняем язык перед очисткой
     await update_order_status(order_id, "canceled")
     await state.clear()
-    await state.update_data(language=lang)  # Восстанавливаем язык
     await state.set_state(Order.choosing_language)
     
-    # Показываем экран выбора языка (без смешанного приветствия)
-    welcome = msg(lang, "welcome") + msg(lang, "change_lang")
-    await message.answer(welcome, reply_markup=kb_main(lang))
+    # Показываем экран выбора языка
+    welcome_text = (
+        "👋 Добро пожаловать в сервис вашего жилого комплекса!\n\n"
+        "⏰ <b>Обратите внимание:</b> услуги выполняются с 09:00 до 18:00.\n\n"
+        "Выберите язык 👇\n\n"
+        "─────────────────────\n\n"
+        "👋 Өз пәтерінің қызметіне қош келдіңіз!\n\n"
+        "⏰ <b>Ескертпе:</b> қызметтері сағат 09:00-ден 18:00-ға дейін.\n\n"
+        "Тілді таңдаңыз 👇"
+    )
+    
+    lang_kb = ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="🇷🇺 Русский"), KeyboardButton(text="🇰🇿 Қазақша")]
+    ], resize_keyboard=True)
+    
+    await message.answer(welcome_text, reply_markup=lang_kb)
 
 @client_router.message(IsClient(), Order.choosing_language, F.text.in_({"🇷🇺 Русский", "🇰🇿 Қазақша"}))
 async def choose_language(message: Message, state: FSMContext):
