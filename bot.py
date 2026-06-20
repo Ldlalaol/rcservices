@@ -528,7 +528,7 @@ async def ask_photo(message: Message, state: FSMContext):
     data = await state.get_data()
     trash = data.get("trash_type", "")
     await state.set_state(Order.sending_photo)
-        lang = data.get("language", "ru")
+    lang = data.get("language", "ru")
     if trash == "🏠 Бытовой" or "Бытовой" in str(trash):
         bags  = data.get("bags") or 0
         price = get_price(bags)
@@ -714,7 +714,6 @@ async def cmd_start(message: Message, state: FSMContext):
     # Читаем данные ДО очистки состояния
     data     = await state.get_data()
     order_id = data.get("order_id")
-        lang     = data.get("language", "ru")
     await update_order_status(order_id, "canceled")
     await state.clear()
     await state.set_state(Order.choosing_language)
@@ -843,7 +842,6 @@ async def process_review(message: Message, state: FSMContext, bot: Bot):
     await message.answer(welcome_text, reply_markup=lang_kb)
 
 @client_router.message(IsClient(), Order.leaving_review)
-async def review_invalid(message: Message):
 async def review_invalid(message: Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("language", "ru")
@@ -994,8 +992,6 @@ async def process_trash(message: Message, state: FSMContext):
         await ask_photo(message, state)
 
 @client_router.message(IsClient(), Order.choosing_trash)
-async def trash_invalid(message: Message):
-    await message.answer(
 async def trash_invalid(message: Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("language", "ru")
@@ -1049,7 +1045,6 @@ async def process_photo(message: Message, state: FSMContext):
     await go_to_time(message, state)
 
 @client_router.message(IsClient(), Order.sending_photo)
-async def photo_invalid(message: Message):
 async def photo_invalid(message: Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("language", "ru")
@@ -1083,7 +1078,6 @@ async def process_time_custom(message: Message, state: FSMContext):
     await message.answer(prompt, reply_markup=kb_nav())
 
 @client_router.message(IsClient(), Order.choosing_time)
-async def time_invalid(message: Message):
 async def time_invalid(message: Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("language", "ru")
@@ -1147,7 +1141,6 @@ async def ask_comment_text(message: Message, state: FSMContext):
     await message.answer(prompt, reply_markup=kb_nav())
 
 @client_router.message(IsClient(), Order.asking_comment)
-async def comment_ask_invalid(message: Message):
 async def comment_ask_invalid(message: Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("language", "ru")
@@ -1175,7 +1168,7 @@ async def confirm_order(message: Message, state: FSMContext, bot: Bot):
     data        = await state.get_data()
     order_id    = data["order_id"]
     trash       = data.get("trash_type", "")
-        lang        = data.get("language", "ru")
+    lang        = data.get("language", "ru")
     # FIX: используем or 0 чтобы избежать ошибки если bags == None
     bags        = data.get("bags") or 0
     needs_price = trash in NEEDS_PRICE or (trash == "🏠 Бытовой" and bags > 10)
