@@ -119,17 +119,27 @@ async def init_db() -> None:
         """)
 
 async def migrate_db() -> None:
+    """Безопасная миграция с проверкой и timeout для больших таблиц"""
     async with db_pool.acquire() as conn:
-        col_type = await conn.fetchval(
-            """
-            SELECT data_type FROM information_schema.columns
-            WHERE table_schema = 'public' AND table_name = 'orders' AND column_name = 'data_json'
-            """
-        )
-        if col_type == "text":
-            await conn.execute(
-                "ALTER TABLE orders ALTER COLUMN data_json TYPE JSONB USING data_json::jsonb"
+        try:
+            col_type = await conn.fetchval(
+                """
+                SELECT data_type FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'orders' AND column_name = 'data_json'
+                """
             )
+            if col_type == "text":
+                # Миграция с timeout для безопасности на больших таблицах
+                await conn.execute("SET statement_timeout = '300s'")
+                await conn.execute(
+                    "ALTER TABLE orders ALTER COLUMN data_json TYPE JSONB USING data_json::jsonb"
+                )
+                await conn.execute("RESET statement_timeout")
+                logger.info("Миграция data_json завершена успешно")
+        except asyncpg.exceptions.QueryCanceledError:
+            logger.warning("Миграция data_json отменена по timeout (таблица слишком большая). Пропускаем.")
+        except Exception as e:
+            logger.warning(f"Ошибка при миграции data_json: {e}. Продолжаем работу.")
 
 def order_data_from_db(value) -> dict:
     if isinstance(value, dict):
@@ -274,6 +284,7 @@ class Order(StatesGroup):
     editing          = State()
     waiting_price    = State()
     price_confirm    = State()
+    price_declined   = State()
     waiting_worker   = State()
     leaving_review   = State()
 
@@ -831,25 +842,15 @@ async def cmd_start(message: Message, state: FSMContext):
     # Читаем данные ДО очистки состояния
     data     = await state.get_data()
     order_id = data.get("order_id")
+    lang = data.get("language", "ru")  # Сохраняем язык перед очисткой
     await update_order_status(order_id, "canceled")
     await state.clear()
+    await state.update_data(language=lang)  # Восстанавливаем язык
     await state.set_state(Order.choosing_language)
     
-    welcome_text = (
-        "👋 Добро пожаловать в сервис вашего жилого комплекса!\n\n"
-        "⏰ <b>Обратите внимание:</b> услуги выполняются с 09:00 до 18:00.\n\n"
-        "Выберите нужную услугу 👇\n\n"
-        "─────────────────────\n\n"
-        "👋 Өз пәтерінің қызметіне қош келдіңіз!\n\n"
-        "⏰ <b>Ескертпе:</b> қызметтері сағат 09:00-ден 18:00-ға дейін.\n\n"
-        "Қажетті қызметті таңдаңыз 👇"
-    )
-    
-    lang_kb = ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="🇷🇺 Русский"), KeyboardButton(text="🇰🇿 Қазақша")]
-    ], resize_keyboard=True)
-    
-    await message.answer(welcome_text, reply_markup=lang_kb)
+    # Показываем экран выбора языка (без смешанного приветствия)
+    welcome = msg(lang, "welcome") + msg(lang, "change_lang")
+    await message.answer(welcome, reply_markup=kb_main(lang))
 
 @client_router.message(IsClient(), Order.choosing_language, F.text.in_({"🇷🇺 Русский", "🇰🇿 Қазақша"}))
 async def choose_language(message: Message, state: FSMContext):
@@ -878,39 +879,40 @@ async def cancel_handler(message: Message, state: FSMContext, bot: Bot):
 
     if current_state == Order.price_confirm.state and order_id:
         await update_order_status(order_id, "price_declined")
-        await bot.send_message(WORKER_ID, f"❌ Клиент отказался от заявки / ❌ Клиент өтіністі бас тартты <code>{order_id}</code> көрсетілген баланың кейін.")
+        if lang == "ru":
+            await bot.send_message(WORKER_ID, f"❌ Клиент отказался от цены по заявке <code>{order_id}</code>")
+        else:
+            await bot.send_message(WORKER_ID, f"❌ Клиент баланы арнайтты <code>{order_id}</code>")
+        await state.set_state(Order.price_declined)
     elif order_id:
         await update_order_status(order_id, "canceled")
-
-    await state.clear()
-    await state.set_state(Order.choosing_language)
+        await state.clear()
+        await state.update_data(language=lang)
+        await state.set_state(Order.choosing_service)
+    else:
+        await state.clear()
+        await state.update_data(language=lang)
+        await state.set_state(Order.choosing_service)
     
-    welcome_text = (
-        "👋 Добро пожаловать в сервис вашего жилого комплекса!\n\n"
-        "⏰ <b>Обратите внимание:</b> услуги выполняются с 09:00 до 18:00.\n\n"
-        "Выберите язык 👇\n\n"
-        "─────────────────────\n\n"
-        "👋 Өз пәтерінің қызметіне қош келдіңіз!\n\n"
-        "⏰ <b>Ескертпе:</b> қызметтері сағат 09:00-ден 18:00-ға дейін.\n\n"
-        "Тілді таңдаңыз 👇"
-    )
+    if current_state == Order.price_confirm.state:
+        # Остаемся в price_declined, не показываем меню
+        return
     
-    lang_kb = ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="🇷🇺 Русский"), KeyboardButton(text="🇰🇿 Қазақша")]
-    ], resize_keyboard=True)
-    
-    await message.answer(welcome_text, reply_markup=lang_kb)
+    # Возвращаемся в главное меню на выбранном языке
+    welcome = msg(lang, "welcome")
+    welcome += msg(lang, "change_lang")
+    await message.answer(welcome, reply_markup=kb_main(lang))
 
 # ── Отзыв ─────────────────────────────────────────────────
 @client_router.message(IsClient(), Order.leaving_review, F.text.startswith("⏭"))
 async def skip_review(message: Message, state: FSMContext):
     data = await state.get_data()
     order_id = data.get("review_order")
-    lang = data.get("language", "ru")
+    lang = data.get("language", "ru")  # Сохраняем язык перед очисткой
     await save_review(order_id, message.from_user.id, skipped=True)
     await state.clear()
+    await state.update_data(language=lang)  # Восстанавливаем язык
     await state.set_state(Order.choosing_service)
-    await state.update_data(language=lang)
     if lang == "ru":
         text = "Спасибо! Возвращаемся в главное меню."
     else:
@@ -921,21 +923,20 @@ async def skip_review(message: Message, state: FSMContext):
 async def process_review(message: Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
     order_id = data.get("review_order")
+    lang = data.get("language", "ru")  # Сохраняем язык перед очисткой
     review = message.text.strip()
     if not review:
-        lang = data.get("language", "ru")
         prompt = msg(lang, "review_prompt")
         await message.answer(prompt, reply_markup=kb_review(lang))
         return
-    if data.get("language", "ru") == "ru":
+    if lang == "ru":
         await bot.send_message(WORKER_ID, f"💬 <b>Новый отзыв по заявке <code>{order_id}</code></b>\n\n{escape(review)}")
     else:
         await bot.send_message(WORKER_ID, f"💬 <b>Өтінім бойынша жаңа пікір <code>{order_id}</code></b>\n\n{escape(review)}")
     await save_review(order_id, message.from_user.id, review_text=review)
-    lang = data.get("language", "ru")
     await state.clear()
+    await state.update_data(language=lang)  # Восстанавливаем язык
     await state.set_state(Order.choosing_service)
-    await state.update_data(language=lang)
     text = msg(lang, "review_thank")
     await message.answer(text, reply_markup=kb_main(lang))
 
@@ -1313,24 +1314,14 @@ async def client_accept_price(message: Message, state: FSMContext, bot: Bot):
     lang = data.get("language", "ru")
     order = await fetch_order(order_id) if order_id else None
     if not order or order["status"] != "price_sent":
+        lang = data.get("language", "ru")  # Сохраняем язык перед очисткой
         await state.clear()
-        await state.set_state(Order.choosing_language)
+        await state.update_data(language=lang)  # Восстанавливаем язык
+        await state.set_state(Order.choosing_service)
         
-        welcome_text = (
-            "👋 Добро пожаловать в сервис вашего жилого комплекса!\n\n"
-            "⏰ <b>Обратите внимание:</b> услуги выполняются с 09:00 до 18:00.\n\n"
-            "Выберите нужную услугу 👇\n\n"
-            "─────────────────────\n\n"
-            "👋 Өз пәтерінің қызметіне қош келдіңіз!\n\n"
-            "⏰ <b>Ескертпе:</b> қызметтері сағат 09:00-ден 18:00-ға дейін.\n\n"
-            "Қажетті қызметті таңдаңыз 👇"
-        )
-        
-        lang_kb = ReplyKeyboardMarkup(keyboard=[
-            [KeyboardButton(text="🇷🇺 Русский"), KeyboardButton(text="🇰🇿 Қазақша")]
-        ], resize_keyboard=True)
-        
-        await message.answer(welcome_text, reply_markup=lang_kb)
+        welcome = msg(lang, "welcome")
+        welcome += msg(lang, "change_lang")
+        await message.answer(welcome, reply_markup=kb_main(lang))
         return
 
     await update_order_status(order_id, "waiting_worker")
