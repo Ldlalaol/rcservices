@@ -502,7 +502,9 @@ async def show_confirm(message: Message, state: FSMContext):
     await state.set_state(Order.confirming)
     data = await state.get_data()
     photo_id = data.get("photo_id")
-    text = order_summary(data) + "\n\n<b>Всё верно?</b>\n\n─────────────────────\n\n<b>Барлық дұрыс па?</b>"
+    lang = data.get("language", "ru")
+    confirm_text = msg(lang, "confirm_prompt")
+    text = order_summary(data) + f"\n\n{confirm_text}"
     if photo_id:
         await message.answer_photo(photo=photo_id, caption=text, reply_markup=kb_confirm())
     else:
@@ -510,54 +512,45 @@ async def show_confirm(message: Message, state: FSMContext):
 
 async def go_to_comment(message: Message, state: FSMContext):
     await state.set_state(Order.asking_comment)
-    await message.answer(
-        "💬 Хотите добавить комментарий к заявке?\n\n"
-        "─────────────────────\n\n"
-        "💬 Өтіністіге пікір қосқыңыз келе ме?",
-        reply_markup=kb_comment()
-    )
+    data = await state.get_data()
+    lang = data.get("language", "ru")
+    prompt = msg(lang, "comment_choice")
+    await message.answer(prompt, reply_markup=kb_comment())
 
 async def go_to_time(message: Message, state: FSMContext):
     await state.set_state(Order.choosing_time)
-    await message.answer(
-        "⏰ Когда вы хотите принять заказ?\n\n"
-        "─────────────────────\n\n"
-        "⏰ Өтіністі қашан қабылдағыңыз келеді?",
-        reply_markup=kb_time()
-    )
+    data = await state.get_data()
+    lang = data.get("language", "ru")
+    prompt = msg(lang, "time_choice")
+    await message.answer(prompt, reply_markup=kb_time())
 
 async def ask_photo(message: Message, state: FSMContext):
     data = await state.get_data()
     trash = data.get("trash_type", "")
     await state.set_state(Order.sending_photo)
+        lang = data.get("language", "ru")
     if trash == "🏠 Бытовой" or "Бытовой" in str(trash):
         bags  = data.get("bags") or 0
         price = get_price(bags)
         await state.update_data(price=price)
         if bags > 10:
-            note_ru = "💰 Стоимость рассчитывается сотрудником по фото."
-            note_kk = "💰 Баланы фото арқылы қызметкер есептейді."
+            if lang == "ru":
+                note = "💰 Стоимость рассчитывается сотрудником по фото."
+            else:
+                note = "💰 Баланы фото арқылы қызметкер есептейді."
         else:
-            note_ru = f"💰 Стоимость вывоза: <b>{price}</b>"
-            note_kk = f"💰 Шығару құны: <b>{price}</b>"
+            if lang == "ru":
+                note = f"💰 Стоимость вывоза: <b>{price}</b>"
+            else:
+                note = f"💰 Шығару құны: <b>{price}</b>"
         
         await message.answer(
-            f"{note_ru}\n\n"
-            f"📸 Пришлите фото мусора\n\n"
-            f"─────────────────────\n\n"
-            f"{note_kk}\n\n"
-            f"📸 Қоқыстың суретін жібер:",
+            f"{note}\n\n📸 " + ("Пришлите фото мусора" if lang == "ru" else "Қоқыстың суретін жібер:"),
             reply_markup=kb_nav()
         )
     else:
-        await message.answer(
-            f"📸 Для <b>{trash}</b> цена рассчитывается сотрудником.\n\n"
-            f"Пришлите фото мусора\n\n"
-            f"─────────────────────\n\n"
-            f"📸 <b>{trash}</b> үшін баланы қызметкер есептейді.\n\n"
-            f"Қоқыстың суретін жібер:",
-            reply_markup=kb_nav(),
-        )
+        prompt_photo = msg(lang, "photo_prompt_other", trash=trash)
+        await message.answer(prompt_photo, reply_markup=kb_nav())
 
 async def send_order_to_worker(bot: Bot, data: dict, order_id: str, needs_price: bool):
     photo_id = data.get("photo_id")
