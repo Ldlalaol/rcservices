@@ -22,6 +22,7 @@ from aiogram.types import (
     Message, CallbackQuery,
     ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove,
     InlineKeyboardMarkup, InlineKeyboardButton,
+    InputMediaPhoto,
 )
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -645,12 +646,18 @@ def order_summary(data: dict, include_worker_price: bool = False, lang: str = "r
 async def show_confirm(message: Message, state: FSMContext):
     await state.set_state(Order.confirming)
     data = await state.get_data()
-    photo_id = data.get("photo_id")
+    photo_ids = data.get("photo_ids", [])
     lang = data.get("language", "ru")
     confirm_text = msg(lang, "confirm_prompt")
     text = order_summary(data, lang=lang) + f"\n\n{confirm_text}"
-    if photo_id:
-        await message.answer_photo(photo=photo_id, caption=text, reply_markup=kb_confirm(lang))
+    
+    if photo_ids:
+        # Отправляем все фото как медиа-группу (альбом)
+        media = [InputMediaPhoto(media=pid, caption=text if i == 0 else "") for i, pid in enumerate(photo_ids)]
+        await message.answer_media_group(media=media)
+        # Отправляем кнопки отдельно после медиа-группы
+        await message.answer("👆 " + ("Выше ваша заявка. Всё верно?" if lang == "ru" else "Жоғарыда өтініміңіз. Барлығы дұрыс па?"), 
+                           reply_markup=kb_confirm(lang))
     else:
         await message.answer(text, reply_markup=kb_confirm(lang))
 
@@ -699,7 +706,6 @@ async def ask_photo(message: Message, state: FSMContext):
 
 async def send_order_to_worker(bot: Bot, data: dict, order_id: str, needs_price: bool):
     photo_ids = data.get("photo_ids", [])
-    photo_id = data.get("photo_id") or (photo_ids[0] if photo_ids else None)
     lang = data.get("language", "ru")
     if needs_price:
         if lang == "ru":
@@ -713,14 +719,17 @@ async def send_order_to_worker(bot: Bot, data: dict, order_id: str, needs_price:
             text = f"📬 <b>Жаңа өтінім!</b>\n\n{order_summary(data, lang='kk')}\n\nℹ️ Баға бекітілген. Іске кірісе беріңіз!"
     
     kb = ikb_worker_new(order_id) if needs_price else ikb_worker_status(order_id)
-    if photo_id:
-        msg = await bot.send_photo(WORKER_ID, photo=photo_id, caption=text, reply_markup=kb)
-        # Если есть дополнительные фото, отправляем их отдельно
-        if len(photo_ids) > 1:
-            for i, pid in enumerate(photo_ids[1:], 1):
-                await bot.send_photo(WORKER_ID, photo=pid, caption=f"📸 Фото {i+1} / Сурет {i+1}")
+    if photo_ids:
+        # Отправляем все фото как медиа-группу (альбом)
+        media = [InputMediaPhoto(media=pid, caption=text if i == 0 else "") for i, pid in enumerate(photo_ids)]
+        messages = await bot.send_media_group(chat_id=WORKER_ID, media=media)
+        msg = messages[0]  # Берём первое сообщение для worker_msg_id
+        # Отправляем кнопки отдельным сообщением после медиа-группы
+        await bot.send_message(WORKER_ID, "👆 " + ("Выше заявка. Действуйте!" if lang == "ru" else "Жоғарыда өтініс. Іс істей бастаңыз!"), 
+                              reply_markup=kb)
     else:
         msg = await bot.send_message(WORKER_ID, text, reply_markup=kb)
+    
     await update_order_worker_message(order_id, msg.message_id)
 
 # ═══════════════════════════════════════════ РОУТЕРЫ ═══════
@@ -787,7 +796,6 @@ async def worker_enter_price(message: Message, state: FSMContext, bot: Bot):
 
     user_id  = order["user_id"]
     photo_ids = order_data.get("photo_ids", [])
-    photo_id = order_data.get("photo_id") or (photo_ids[0] if photo_ids else None)
     client_lang = order_data.get("language", "ru")
     summary = order_summary(order_data, include_worker_price=True, lang=client_lang)
     if client_lang == "ru":
@@ -795,12 +803,13 @@ async def worker_enter_price(message: Message, state: FSMContext, bot: Bot):
     else:
         client_text = f"💰 <b>Қызметкер өтініміңізді бағалады!</b>\n\n{summary}\n\nӨтінімді растайсыз ба?"
 
-    if photo_id:
-        await bot.send_photo(user_id, photo=photo_id, caption=client_text, reply_markup=kb_price_confirm(client_lang))
-        # Если есть дополнительные фото, отправляем их отдельно
-        if len(photo_ids) > 1:
-            for i, pid in enumerate(photo_ids[1:], 1):
-                await bot.send_photo(user_id, photo=pid, caption=f"📸 Фото {i+1} / Сурет {i+1}")
+    if photo_ids:
+        # Отправляем все фото как медиа-группу (альбом)
+        media = [InputMediaPhoto(media=pid, caption=client_text if i == 0 else "") for i, pid in enumerate(photo_ids)]
+        await bot.send_media_group(chat_id=user_id, media=media)
+        # Отправляем кнопки отдельным сообщением после медиа-группы
+        await bot.send_message(user_id, "👆 " + ("Выше ваша заявка. Что вы решили?" if client_lang == "ru" else "Жоғарыда өтініміңіз. Не істедіңіз?"), 
+                              reply_markup=kb_price_confirm(client_lang))
     else:
         await bot.send_message(user_id, client_text, reply_markup=kb_price_confirm(client_lang))
 
