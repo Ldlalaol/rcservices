@@ -857,7 +857,7 @@ async def choose_language(message: Message, state: FSMContext):
     await state.update_data(language=lang)
     await state.set_state(Order.choosing_service)
     
-    welcome = msg(lang, "welcome")
+    welcome = msg(lang, "welcome") + msg(lang, "change_lang")
     await message.answer(welcome, reply_markup=kb_main(lang))
 
 @client_router.message(IsClient(), F.text.startswith("🆘"))
@@ -906,26 +906,16 @@ async def cancel_handler(message: Message, state: FSMContext, bot: Bot):
 async def skip_review(message: Message, state: FSMContext):
     data = await state.get_data()
     order_id = data.get("review_order")
+    lang = data.get("language", "ru")
     await save_review(order_id, message.from_user.id, skipped=True)
     await state.clear()
-    lang = "ru"  # После отзыва возвращаемся на выбор языка
-    await state.set_state(Order.choosing_language)
-    
-    welcome_text = (
-        "👋 Добро пожаловать в сервис вашего жилого комплекса!\n\n"
-        "⏰ <b>Обратите внимание:</b> услуги выполняются с 09:00 до 18:00.\n\n"
-        "Выберите нужную услугу 👇\n\n"
-        "─────────────────────\n\n"
-        "👋 Өз пәтерінің қызметіне қош келдіңіз!\n\n"
-        "⏰ <b>Ескертпе:</b> қызметтері сағат 09:00-ден 18:00-ға дейін.\n\n"
-        "Қажетті қызметті таңдаңыз 👇"
-    )
-    
-    lang_kb = ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="🇷🇺 Русский"), KeyboardButton(text="🇰🇿 Қазақша")]
-    ], resize_keyboard=True)
-    
-    await message.answer(welcome_text, reply_markup=lang_kb)
+    await state.set_state(Order.choosing_service)
+    await state.update_data(language=lang)
+    if lang == "ru":
+        text = "Спасибо! Возвращаемся в главное меню."
+    else:
+        text = "Рахмет! Басты мәзірге ораламыз."
+    await message.answer(text, reply_markup=kb_main(lang))
 
 @client_router.message(IsClient(), Order.leaving_review, F.text)
 async def process_review(message: Message, state: FSMContext, bot: Bot):
@@ -942,24 +932,12 @@ async def process_review(message: Message, state: FSMContext, bot: Bot):
     else:
         await bot.send_message(WORKER_ID, f"💬 <b>Өтінім бойынша жаңа пікір <code>{order_id}</code></b>\n\n{escape(review)}")
     await save_review(order_id, message.from_user.id, review_text=review)
+    lang = data.get("language", "ru")
     await state.clear()
-    await state.set_state(Order.choosing_language)
-    
-    welcome_text = (
-        "👋 Добро пожаловать в сервис вашего жилого комплекса!\n\n"
-        "⏰ <b>Обратите внимание:</b> услуги выполняются с 09:00 до 18:00.\n\n"
-        "Выберите нужную услугу 👇\n\n"
-        "─────────────────────\n\n"
-        "👋 Өз пәтерінің қызметіне қош келдіңіз!\n\n"
-        "⏰ <b>Ескертпе:</b> қызметтері сағат 09:00-ден 18:00-ға дейін.\n\n"
-        "Қажетті қызметті таңдаңыз 👇"
-    )
-    
-    lang_kb = ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="🇷🇺 Русский"), KeyboardButton(text="🇰🇿 Қазақша")]
-    ], resize_keyboard=True)
-    
-    await message.answer(welcome_text, reply_markup=lang_kb)
+    await state.set_state(Order.choosing_service)
+    await state.update_data(language=lang)
+    text = msg(lang, "review_thank")
+    await message.answer(text, reply_markup=kb_main(lang))
 
 @client_router.message(IsClient(), Order.leaving_review)
 async def review_invalid(message: Message, state: FSMContext):
