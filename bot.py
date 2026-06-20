@@ -791,8 +791,24 @@ async def skip_review(message: Message, state: FSMContext):
     order_id = data.get("review_order")
     await save_review(order_id, message.from_user.id, skipped=True)
     await state.clear()
-    await state.set_state(Order.choosing_service)
-    await message.answer("Спасибо! Возвращаемся в главное меню. / Рахмет! Басты мәзірге орал.", reply_markup=kb_main())
+    lang = "ru"  # После отзыва возвращаемся на выбор языка
+    await state.set_state(Order.choosing_language)
+    
+    welcome_text = (
+        "👋 Добро пожаловать в сервис вашего жилого комплекса!\n\n"
+        "⏰ <b>Обратите внимание:</b> услуги выполняются с 09:00 до 18:00.\n\n"
+        "Выберите нужную услугу 👇\n\n"
+        "─────────────────────\n\n"
+        "👋 Өз пәтерінің қызметіне қош келдіңіз!\n\n"
+        "⏰ <b>Ескертпе:</b> қызметтері сағат 09:00-ден 18:00-ға дейін.\n\n"
+        "Қажетті қызметті таңдаңыз 👇"
+    )
+    
+    lang_kb = ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="🇷🇺 Русский"), KeyboardButton(text="🇰🇿 Қазақша")]
+    ], resize_keyboard=True)
+    
+    await message.answer(welcome_text, reply_markup=lang_kb)
 
 @client_router.message(IsClient(), Order.leaving_review, F.text)
 async def process_review(message: Message, state: FSMContext, bot: Bot):
@@ -800,17 +816,38 @@ async def process_review(message: Message, state: FSMContext, bot: Bot):
     order_id = data.get("review_order")
     review = message.text.strip()
     if not review:
-        await message.answer("Напишите отзыв текстом или нажмите «⏭ Пропустить отзыв». / Пікіріңізді мәтін түрінде жазыңыз немесе «⏭ Отзывды өткізіңіз» басыңыз.", reply_markup=kb_review())
+        lang = data.get("language", "ru")
+        prompt = msg(lang, "review_prompt")
+        await message.answer(prompt, reply_markup=kb_review())
         return
     await bot.send_message(WORKER_ID, f"💬 <b>Новый отзыв по заявке / 💬 <b>Өтіністі бойынша жаңа пікір <code>{order_id}</code></b>\n\n{escape(review)}")
     await save_review(order_id, message.from_user.id, review_text=review)
     await state.clear()
-    await state.set_state(Order.choosing_service)
-    await message.answer("Спасибо за отзыв! Возвращаемся в главное меню. / Пікіріңіз үшін рахмет! Басты мәзірге орал.", reply_markup=kb_main())
+    await state.set_state(Order.choosing_language)
+    
+    welcome_text = (
+        "👋 Добро пожаловать в сервис вашего жилого комплекса!\n\n"
+        "⏰ <b>Обратите внимание:</b> услуги выполняются с 09:00 до 18:00.\n\n"
+        "Выберите нужную услугу 👇\n\n"
+        "─────────────────────\n\n"
+        "👋 Өз пәтерінің қызметіне қош келдіңіз!\n\n"
+        "⏰ <b>Ескертпе:</b> қызметтері сағат 09:00-ден 18:00-ға дейін.\n\n"
+        "Қажетті қызметті таңдаңыз 👇"
+    )
+    
+    lang_kb = ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="🇷🇺 Русский"), KeyboardButton(text="🇰🇿 Қазақша")]
+    ], resize_keyboard=True)
+    
+    await message.answer(welcome_text, reply_markup=lang_kb)
 
 @client_router.message(IsClient(), Order.leaving_review)
 async def review_invalid(message: Message):
-    await message.answer("Напишите отзыв текстом или нажмите «⏭ Пропустить отзыв». / Пікіріңізді мәтін түрінде жазыңыз немесе «⏭ Отзывды өткізіңіз» басыңыз.", reply_markup=kb_review())
+async def review_invalid(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("language", "ru")
+    prompt = msg(lang, "review_prompt")
+    await message.answer(prompt, reply_markup=kb_review())
 
 # ── Услуга ────────────────────────────────────────────────
 @client_router.message(IsClient(), Order.choosing_service, F.text.startswith("🗑"))
@@ -1103,7 +1140,10 @@ async def skip_comment(message: Message, state: FSMContext):
 @client_router.message(IsClient(), Order.asking_comment, F.text.startswith("💬"))
 async def ask_comment_text(message: Message, state: FSMContext):
     await state.set_state(Order.entering_comment)
-    await message.answer("✏️ Напишите ваш комментарий / ✏️ Өз пікіріңізді жазыңыз:", reply_markup=kb_nav())
+    data = await state.get_data()
+    lang = data.get("language", "ru")
+    prompt = msg(lang, "comment_prompt")
+    await message.answer(prompt, reply_markup=kb_nav())
 
 @client_router.message(IsClient(), Order.asking_comment)
 async def comment_ask_invalid(message: Message):
