@@ -243,11 +243,14 @@ def generate_order_id() -> str:
     rand = "".join(random.choices(string.ascii_uppercase + string.digits, k=4))
     return f"ЖК-{date}-{rand}"
 
-def get_price(bags: int) -> str:
-    if bags <= 3:    return "500 ₸"
-    elif bags <= 6:  return "1 000 ₸"
-    elif bags <= 10: return "1 500 ₸"
-    else:            return "по оценке сотрудника"
+def get_price(bags: int, lang: str = "ru") -> str:
+    if bags <= 3:
+        return "500 ₸"
+    if bags <= 6:
+        return "1 000 ₸"
+    if bags <= 10:
+        return "1 500 ₸"
+    return "по оценке сотрудника" if lang == "ru" else "қызметкердің бағалауы бойынша"
 
 # ═══════════════════════════════════════════ FSM ═══════════
 class Worker(StatesGroup):
@@ -288,73 +291,148 @@ class IsWorkerCB(BaseFilter):
         return callback.from_user.id == WORKER_ID
 
 # ═══════════════════════════════════════ КЛАВИАТУРЫ ════════
-def kb_main():
+BTN = {
+    "ru": {
+        "main_service": "🗑 Вынести мусор",
+        "main_help": "🆘 Помощь",
+        "back": "◀️ Назад",
+        "cancel": "❌ Отменить заявку",
+        "trash_domestic": "🏠 Бытовой",
+        "trash_construction": "🧱 Строительный",
+        "trash_large": "📦 Крупногабаритный",
+        "time_now": "⚡ Сейчас",
+        "time_hour": "🕐 В течение часа",
+        "time_custom": "🕒 Указать время",
+        "comment_add": "💬 Добавить комментарий",
+        "comment_skip": "➡️ Без комментария",
+        "confirm_ok": "✅ Подтвердить",
+        "confirm_edit": "✏️ Изменить",
+        "price_accept": "✅ Принять цену",
+        "review_skip": "⏭ Пропустить отзыв",
+        "edit_block": "🔄 Изменить блок",
+        "edit_floor": "🔄 Изменить этаж",
+        "edit_apt": "🔄 Изменить квартиру",
+        "edit_trash": "🔄 Изменить тип мусора",
+        "edit_bags": "🔄 Изменить кол-во пакетов",
+        "edit_photo": "🔄 Изменить фото",
+        "edit_time": "🔄 Изменить время",
+        "edit_comment": "🔄 Изменить комментарий",
+    },
+    "kk": {
+        "main_service": "🗑 Қоқысты шығару",
+        "main_help": "🆘 Көмек",
+        "back": "◀️ Артқа",
+        "cancel": "❌ Өтінімді бас тарту",
+        "trash_domestic": "🏠 Тұрмыстық",
+        "trash_construction": "🧱 Құрылыс",
+        "trash_large": "📦 Ірі мөлшерлі",
+        "time_now": "⚡ Қазір",
+        "time_hour": "🕐 Сағат ішінде",
+        "time_custom": "🕒 Уақытты көрсету",
+        "comment_add": "💬 Түсіндіру қосу",
+        "comment_skip": "➡️ Түсіндірісіз",
+        "confirm_ok": "✅ Растау",
+        "confirm_edit": "✏️ Өзгерту",
+        "price_accept": "✅ Бағасын қабылдау",
+        "review_skip": "⏭ Өндіктемені өткізіп жіберу",
+        "edit_block": "🔄 Блокты өзгерту",
+        "edit_floor": "🔄 Қабатты өзгерту",
+        "edit_apt": "🔄 Пәтерді өзгерту",
+        "edit_trash": "🔄 Қоқыс түрін өзгерту",
+        "edit_bags": "🔄 Қап санын өзгерту",
+        "edit_photo": "🔄 Суретті өзгерту",
+        "edit_time": "🔄 Уақытты өзгерту",
+        "edit_comment": "🔄 Пікірді өзгерту",
+    },
+}
+
+
+def kb_main(lang: str):
+    b = BTN.get(lang, BTN["ru"])
     return ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="🗑 Вынести мусор / 🗑 Қоқысты шығару"), KeyboardButton(text="🆘 Помощь / 🆘 Көмек")],
+        [KeyboardButton(text=b["main_service"]), KeyboardButton(text=b["main_help"])],
     ], resize_keyboard=True)
 
-def kb_nav():
+
+def kb_nav(lang: str):
+    b = BTN.get(lang, BTN["ru"])
     return ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="◀️ Назад / ◀️ Артқа"), KeyboardButton(text="❌ Отменить заявку / ❌ Өтінімді бас тарту")],
+        [KeyboardButton(text=b["back"]), KeyboardButton(text=b["cancel"])],
     ], resize_keyboard=True)
 
-def kb_blocks():
+
+def kb_blocks(lang: str):
+    b = BTN.get(lang, BTN["ru"])
     return ReplyKeyboardMarkup(keyboard=[
         [KeyboardButton(text="Блок 1"), KeyboardButton(text="Блок 2"), KeyboardButton(text="Блок 3")],
         [KeyboardButton(text="Блок 4"), KeyboardButton(text="Блок 5"), KeyboardButton(text="Блок 6")],
-        [KeyboardButton(text="◀️ Назад / ◀️ Артқа"), KeyboardButton(text="❌ Отменить заявку / ❌ Өтінімді бас тарту")],
+        [KeyboardButton(text=b["back"]), KeyboardButton(text=b["cancel"])],
     ], resize_keyboard=True)
 
-def kb_trash():
+
+def kb_trash(lang: str):
+    b = BTN.get(lang, BTN["ru"])
     return ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="🏠 Бытовой / 🏠 Тұрмыстық")],
-        [KeyboardButton(text="🧱 Строительный / 🧱 Құрылыс"), KeyboardButton(text="📦 Крупногабаритный / 📦 Ірі мөлшерлі")],
-        [KeyboardButton(text="◀️ Назад / ◀️ Артқа"), KeyboardButton(text="❌ Отменить заявку / ❌ Өтінімді бас тарту")],
+        [KeyboardButton(text=b["trash_domestic"])],
+        [KeyboardButton(text=b["trash_construction"]), KeyboardButton(text=b["trash_large"])],
+        [KeyboardButton(text=b["back"]), KeyboardButton(text=b["cancel"])],
     ], resize_keyboard=True)
 
-def kb_time():
+
+def kb_time(lang: str):
+    b = BTN.get(lang, BTN["ru"])
     return ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="⚡ Сейчас / ⚡ Қазір"), KeyboardButton(text="🕐 В течение часа / 🕐 Сағат ішінде")],
-        [KeyboardButton(text="🕒 Указать время / 🕒 Уақытты көрсету")],
-        [KeyboardButton(text="◀️ Назад / ◀️ Артқа"), KeyboardButton(text="❌ Отменить заявку / ❌ Өтінімді бас тарту")],
+        [KeyboardButton(text=b["time_now"]), KeyboardButton(text=b["time_hour"])],
+        [KeyboardButton(text=b["time_custom"])],
+        [KeyboardButton(text=b["back"]), KeyboardButton(text=b["cancel"])],
     ], resize_keyboard=True)
 
-def kb_comment():
+
+def kb_comment(lang: str):
+    b = BTN.get(lang, BTN["ru"])
     return ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="💬 Добавить комментарий / 💬 Түсіндіру қосу"), KeyboardButton(text="➡️ Без комментария / ➡️ Түсіндірісіз")],
-        [KeyboardButton(text="◀️ Назад / ◀️ Артқа"), KeyboardButton(text="❌ Отменить заявку / ❌ Өтінімді бас тарту")],
+        [KeyboardButton(text=b["comment_add"]), KeyboardButton(text=b["comment_skip"])],
+        [KeyboardButton(text=b["back"]), KeyboardButton(text=b["cancel"])],
     ], resize_keyboard=True)
 
-def kb_confirm():
+
+def kb_confirm(lang: str):
+    b = BTN.get(lang, BTN["ru"])
     return ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="✅ Подтвердить / ✅ Растау")],
-        [KeyboardButton(text="✏️ Изменить / ✏️ Өзгерту"), KeyboardButton(text="❌ Отменить заявку / ❌ Өтінімді бас тарту")],
+        [KeyboardButton(text=b["confirm_ok"])],
+        [KeyboardButton(text=b["confirm_edit"]), KeyboardButton(text=b["cancel"])],
     ], resize_keyboard=True)
 
-def kb_price_confirm():
+
+def kb_price_confirm(lang: str):
+    b = BTN.get(lang, BTN["ru"])
     return ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="✅ Принять цену / ✅ Бағасын қабылдау")],
-        [KeyboardButton(text="❌ Отменить заявку / ❌ Өтінімді бас тарту")],
+        [KeyboardButton(text=b["price_accept"])],
+        [KeyboardButton(text=b["cancel"])],
     ], resize_keyboard=True)
 
-def kb_review():
+
+def kb_review(lang: str):
+    b = BTN.get(lang, BTN["ru"])
     return ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="⏭ Пропустить отзыв / ⏭ Өндіктемені өткізіп жіберу")],
+        [KeyboardButton(text=b["review_skip"])],
     ], resize_keyboard=True)
 
-def kb_edit(data: dict):
+
+def kb_edit(data: dict, lang: str):
+    b = BTN.get(lang, BTN["ru"])
     rows = [
-        [KeyboardButton(text="🔄 Изменить блок")],
-        [KeyboardButton(text="🔄 Изменить этаж")],
-        [KeyboardButton(text="🔄 Изменить квартиру")],
-        [KeyboardButton(text="🔄 Изменить тип мусора")],
+        [KeyboardButton(text=b["edit_block"])],
+        [KeyboardButton(text=b["edit_floor"])],
+        [KeyboardButton(text=b["edit_apt"])],
+        [KeyboardButton(text=b["edit_trash"])],
     ]
     if data.get("trash_type") == "🏠 Бытовой":
-        rows.append([KeyboardButton(text="🔄 Изменить кол-во пакетов")])
-    rows.append([KeyboardButton(text="🔄 Изменить фото")])
-    rows.append([KeyboardButton(text="🔄 Изменить время")])
-    rows.append([KeyboardButton(text="🔄 Изменить комментарий")])
-    rows.append([KeyboardButton(text="◀️ Назад"), KeyboardButton(text="❌ Отменить заявку")])
+        rows.append([KeyboardButton(text=b["edit_bags"])])
+    rows.append([KeyboardButton(text=b["edit_photo"])])
+    rows.append([KeyboardButton(text=b["edit_time"])])
+    rows.append([KeyboardButton(text=b["edit_comment"])])
+    rows.append([KeyboardButton(text=b["back"]), KeyboardButton(text=b["cancel"])])
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
 
 def ikb_worker_new(order_id: str) -> InlineKeyboardMarkup:
@@ -374,9 +452,31 @@ def ikb_worker_on_way(order_id: str) -> InlineKeyboardMarkup:
     ]])
 
 # ═══════════════════════════════════════════ ХЕЛПЕРЫ ═══════
-TRASH_TYPES = {"🏠 Бытовой", "🧱 Строительный", "📦 Крупногабаритный"}
+TRASH_TYPES = {
+    "🏠 Бытовой", "🧱 Строительный", "📦 Крупногабаритный",
+    "🏠 Тұрмыстық", "🧱 Құрылыс", "📦 Ірі мөлшерлі",
+}
 BLOCKS      = {"Блок 1", "Блок 2", "Блок 3", "Блок 4", "Блок 5", "Блок 6"}
 NEEDS_PRICE = {"🧱 Строительный", "📦 Крупногабаритный"}
+
+TRASH_CANONICAL = {
+    "🏠": "🏠 Бытовой",
+    "🧱": "🧱 Строительный",
+    "📦": "📦 Крупногабаритный",
+}
+
+TRASH_LOCALIZED = {
+    "ru": {
+        "🏠 Бытовой": "🏠 Бытовой",
+        "🧱 Строительный": "🧱 Строительный",
+        "📦 Крупногабаритный": "📦 Крупногабаритный",
+    },
+    "kk": {
+        "🏠 Бытовой": "🏠 Тұрмыстық",
+        "🧱 Строительный": "🧱 Құрылыс",
+        "📦 Крупногабаритный": "📦 Ірі мөлшерлі",
+    },
+}
 
 # ── Тексты на двух языках ─────────────────────────────────
 MESSAGES = {
@@ -471,7 +571,7 @@ def msg(lang: str, key: str, **kwargs) -> str:
     text = MESSAGES.get(lang, MESSAGES["ru"]).get(key, "")
     return text.format(**kwargs) if kwargs else text
 
-def order_summary(data: dict, include_worker_price: bool = False) -> str:
+def order_summary(data: dict, include_worker_price: bool = False, lang: str = "ru") -> str:
     trash        = data.get("trash_type", "—")
     bags         = data.get("bags")
     price        = data.get("price", "")
@@ -479,22 +579,44 @@ def order_summary(data: dict, include_worker_price: bool = False) -> str:
     time_str     = data.get("order_time", "—")
     worker_price = data.get("worker_price", "")
 
-    bags_line   = f"\n📦 Кол-во пакетов: {bags}" if bags else ""
-    price_line  = f"\n💰 Стоимость:      {price}" if price and price != "по оценке сотрудника" else ""
-    wprice_line = f"\n💰 Цена:           {worker_price} ₸" if (include_worker_price and worker_price) else ""
-    comm_line   = f"\n💬 Комментарий:    {comment}" if comment else ""
+    localized_trash = TRASH_LOCALIZED.get(lang, TRASH_LOCALIZED["ru"]).get(trash, trash)
+
+    if lang == "ru":
+        bags_line = f"\n📦 Кол-во пакетов: {bags}" if bags else ""
+        price_line = f"\n💰 Стоимость:      {price}" if price else ""
+        wprice_line = f"\n💰 Цена:           {worker_price} ₸" if (include_worker_price and worker_price) else ""
+        comm_line = f"\n💬 Комментарий:    {comment}" if comment else ""
+        title = "📋 <b>Заявка"
+        service_label = "📦 Услуга"
+        trash_label = "🗑 Тип мусора"
+        block_label = "🏢 Блок"
+        floor_label = "🪜 Этаж"
+        apt_label = "🚪 Квартира"
+        time_label = "⏰ Время"
+    else:
+        bags_line = f"\n📦 Қап саны:       {bags}" if bags else ""
+        price_line = f"\n💰 Құны:           {price}" if price else ""
+        wprice_line = f"\n💰 Бағасы:         {worker_price} ₸" if (include_worker_price and worker_price) else ""
+        comm_line = f"\n💬 Пікір:          {comment}" if comment else ""
+        title = "📋 <b>Өтінім"
+        service_label = "📦 Қызмет"
+        trash_label = "🗑 Қоқыс түрі"
+        block_label = "🏢 Блок"
+        floor_label = "🪜 Қабат"
+        apt_label = "🚪 Пәтер"
+        time_label = "⏰ Уақыт"
 
     return (
-        f"📋 <b>Заявка <code>{data.get('order_id', '—')}</code></b>\n\n"
-        f"📦 Услуга:     {data.get('service', '—')}\n"
-        f"🗑 Тип мусора: {trash}"
+        f"{title} <code>{data.get('order_id', '—')}</code></b>\n\n"
+        f"{service_label}:     {data.get('service', '—')}\n"
+        f"{trash_label}: {localized_trash}"
         f"{bags_line}"
         f"{price_line}"
         f"{wprice_line}\n"
-        f"🏢 Блок:       {data.get('block', '—')}\n"
-        f"🪜 Этаж:       {data.get('floor', '—')}\n"
-        f"🚪 Квартира:   {data.get('apt', '—')}\n"
-        f"⏰ Время:      {time_str}"
+        f"{block_label}:       {data.get('block', '—')}\n"
+        f"{floor_label}:       {data.get('floor', '—')}\n"
+        f"{apt_label}:   {data.get('apt', '—')}\n"
+        f"{time_label}:      {time_str}"
         f"{comm_line}"
     )
 
@@ -504,25 +626,25 @@ async def show_confirm(message: Message, state: FSMContext):
     photo_id = data.get("photo_id")
     lang = data.get("language", "ru")
     confirm_text = msg(lang, "confirm_prompt")
-    text = order_summary(data) + f"\n\n{confirm_text}"
+    text = order_summary(data, lang=lang) + f"\n\n{confirm_text}"
     if photo_id:
-        await message.answer_photo(photo=photo_id, caption=text, reply_markup=kb_confirm())
+        await message.answer_photo(photo=photo_id, caption=text, reply_markup=kb_confirm(lang))
     else:
-        await message.answer(text, reply_markup=kb_confirm())
+        await message.answer(text, reply_markup=kb_confirm(lang))
 
 async def go_to_comment(message: Message, state: FSMContext):
     await state.set_state(Order.asking_comment)
     data = await state.get_data()
     lang = data.get("language", "ru")
     prompt = msg(lang, "comment_choice")
-    await message.answer(prompt, reply_markup=kb_comment())
+    await message.answer(prompt, reply_markup=kb_comment(lang))
 
 async def go_to_time(message: Message, state: FSMContext):
     await state.set_state(Order.choosing_time)
     data = await state.get_data()
     lang = data.get("language", "ru")
     prompt = msg(lang, "time_choice")
-    await message.answer(prompt, reply_markup=kb_time())
+    await message.answer(prompt, reply_markup=kb_time(lang))
 
 async def ask_photo(message: Message, state: FSMContext):
     data = await state.get_data()
@@ -531,7 +653,7 @@ async def ask_photo(message: Message, state: FSMContext):
     lang = data.get("language", "ru")
     if trash == "🏠 Бытовой" or "Бытовой" in str(trash):
         bags  = data.get("bags") or 0
-        price = get_price(bags)
+        price = get_price(bags, lang)
         await state.update_data(price=price)
         if bags > 10:
             if lang == "ru":
@@ -546,30 +668,25 @@ async def ask_photo(message: Message, state: FSMContext):
         
         await message.answer(
             f"{note}\n\n📸 " + ("Пришлите фото мусора" if lang == "ru" else "Қоқыстың суретін жібер:"),
-            reply_markup=kb_nav()
+            reply_markup=kb_nav(lang)
         )
     else:
         prompt_photo = msg(lang, "photo_prompt_other", trash=trash)
-        await message.answer(prompt_photo, reply_markup=kb_nav())
+        await message.answer(prompt_photo, reply_markup=kb_nav(lang))
 
 async def send_order_to_worker(bot: Bot, data: dict, order_id: str, needs_price: bool):
     photo_id = data.get("photo_id")
+    lang = data.get("language", "ru")
     if needs_price:
-        text = (
-            f"📬 <b>Новая заявка!</b>\n\n{order_summary(data)}\n\n"
-            f"💰 <b>Укажите цену для клиента:</b>\n\n"
-            f"─────────────────────\n\n"
-            f"📬 <b>Жаңа өтіністі!</b>\n\n{order_summary(data)}\n\n"
-            f"💰 <b>Клиентке баланы қойыңыз:</b>"
-        )
+        if lang == "ru":
+            text = f"📬 <b>Новая заявка!</b>\n\n{order_summary(data, lang='ru')}\n\n💰 <b>Укажите цену для клиента:</b>"
+        else:
+            text = f"📬 <b>Жаңа өтінім!</b>\n\n{order_summary(data, lang='kk')}\n\n💰 <b>Клиентке бағаны енгізіңіз:</b>"
     else:
-        text = (
-            f"📬 <b>Новая заявка!</b>\n\n{order_summary(data)}\n\n"
-            f"ℹ️ Цена фиксированная. Можете приступать!\n\n"
-            f"─────────────────────\n\n"
-            f"📬 <b>Жаңа өтіністі!</b>\n\n{order_summary(data)}\n\n"
-            f"ℹ️ Баланы бекітіліген. Басталуға болады!"
-        )
+        if lang == "ru":
+            text = f"📬 <b>Новая заявка!</b>\n\n{order_summary(data, lang='ru')}\n\nℹ️ Цена фиксированная. Можете приступать!"
+        else:
+            text = f"📬 <b>Жаңа өтінім!</b>\n\n{order_summary(data, lang='kk')}\n\nℹ️ Баға бекітілген. Іске кірісе беріңіз!"
     
     kb = ikb_worker_new(order_id) if needs_price else ikb_worker_status(order_id)
     if photo_id:
@@ -642,19 +759,17 @@ async def worker_enter_price(message: Message, state: FSMContext, bot: Bot):
 
     user_id  = order["user_id"]
     photo_id = order_data.get("photo_id")
-    summary    = order_summary(order_data, include_worker_price=True)
-    client_text = (
-        f"💰 <b>Работник оценил вашу заявку!</b>\n\n{summary}\n\n"
-        f"Подтверждаете заказ?\n\n"
-        f"─────────────────────\n\n"
-        f"💰 <b>Қызметкер сіздің өтіністіңізді бағалады!</b>\n\n{summary}\n\n"
-        f"Өтіністі растайсыз ба?"
-    )
+    client_lang = order_data.get("language", "ru")
+    summary = order_summary(order_data, include_worker_price=True, lang=client_lang)
+    if client_lang == "ru":
+        client_text = f"💰 <b>Работник оценил вашу заявку!</b>\n\n{summary}\n\nПодтверждаете заказ?"
+    else:
+        client_text = f"💰 <b>Қызметкер өтініміңізді бағалады!</b>\n\n{summary}\n\nӨтінімді растайсыз ба?"
 
     if photo_id:
-        await bot.send_photo(user_id, photo=photo_id, caption=client_text, reply_markup=kb_price_confirm())
+        await bot.send_photo(user_id, photo=photo_id, caption=client_text, reply_markup=kb_price_confirm(client_lang))
     else:
-        await bot.send_message(user_id, client_text, reply_markup=kb_price_confirm())
+        await bot.send_message(user_id, client_text, reply_markup=kb_price_confirm(client_lang))
 
     # Мёржим данные — не перезаписываем целиком
     await set_client_state(bot.id, user_id, Order.price_confirm, {"order_id": order_id})
@@ -671,6 +786,7 @@ async def worker_status(callback: CallbackQuery, bot: Bot):
         return
 
     user_id = order["user_id"]
+    client_lang = order["data"].get("language", "ru")
 
     if status == "on_way":
         if order["status"] != "waiting_worker":
@@ -678,11 +794,10 @@ async def worker_status(callback: CallbackQuery, bot: Bot):
             return
         await update_order_status(order_id, "on_way")
         await callback.message.edit_reply_markup(reply_markup=ikb_worker_on_way(order_id))
-        await bot.send_message(user_id, 
-            f"🚗 <b>Статус заявки <code>{order_id}</code>: Работник едет к вам!</b>\n\n"
-            f"─────────────────────\n\n"
-            f"🚗 <b>Өтіністің статусы <code>{order_id}</code>: Қызметкер сізге баратын жолда!</b>"
-        )
+        if client_lang == "ru":
+            await bot.send_message(user_id, f"🚗 <b>Статус заявки <code>{order_id}</code>: Работник едет к вам!</b>")
+        else:
+            await bot.send_message(user_id, f"🚗 <b>Өтінім статусы <code>{order_id}</code>: Қызметкер сізге келе жатыр!</b>")
         await callback.answer("Статус: В пути")
 
     elif status == "done":
@@ -692,17 +807,19 @@ async def worker_status(callback: CallbackQuery, bot: Bot):
         await update_order_status(order_id, "done")
         await callback.message.edit_reply_markup(reply_markup=None)
         await callback.message.answer(f"✅ Заявка <code>{order_id}</code> выполнена и закрыта.")
-        await bot.send_message(
-            user_id,
-            f"✅ <b>Статус заявки <code>{order_id}</code>: Выполнено!</b>\n\n"
-            "Спасибо, что воспользовались нашим сервисом!\n"
-            "Напишите отзыв о выполненной работе или нажмите кнопку ниже, чтобы пропустить.\n\n"
-            "─────────────────────\n\n"
-            f"✅ <b>Өтіністің статусы <code>{order_id}</code>: Орындалды!</b>\n\n"
-            "Біздің қызметті пайдалағаныңыз үшін рахмет!\n"
-            "Орындалған жұмыс туралы пікіріңізді жазыңыз немесе өткізу үшін төмендегі түймені басыңыз.",
-            reply_markup=kb_review(),
-        )
+        if client_lang == "ru":
+            done_text = (
+                f"✅ <b>Статус заявки <code>{order_id}</code>: Выполнено!</b>\n\n"
+                "Спасибо, что воспользовались нашим сервисом!\n"
+                "Напишите отзыв о выполненной работе или нажмите кнопку ниже, чтобы пропустить."
+            )
+        else:
+            done_text = (
+                f"✅ <b>Өтінім статусы <code>{order_id}</code>: Орындалды!</b>\n\n"
+                "Қызметімізді пайдаланғаныңызға рахмет!\n"
+                "Орындалған жұмыс туралы пікір жазыңыз немесе өткізіп жіберу үшін төмендегі батырманы басыңыз."
+            )
+        await bot.send_message(user_id, done_text, reply_markup=kb_review(client_lang))
         # Мёржим данные — не перезаписываем целиком
         await set_client_state(bot.id, user_id, Order.leaving_review, {"review_order": order_id})
         await callback.answer("Заявка закрыта!")
@@ -741,7 +858,7 @@ async def choose_language(message: Message, state: FSMContext):
     await state.set_state(Order.choosing_service)
     
     welcome = msg(lang, "welcome")
-    await message.answer(welcome, reply_markup=kb_main())
+    await message.answer(welcome, reply_markup=kb_main(lang))
 
 @client_router.message(IsClient(), F.text.startswith("🆘"))
 async def help_handler(message: Message, state: FSMContext):
@@ -785,7 +902,7 @@ async def cancel_handler(message: Message, state: FSMContext, bot: Bot):
     await message.answer(welcome_text, reply_markup=lang_kb)
 
 # ── Отзыв ─────────────────────────────────────────────────
-@client_router.message(IsClient(), Order.leaving_review, F.text == "⏭ Пропустить отзыв")
+@client_router.message(IsClient(), Order.leaving_review, F.text.startswith("⏭"))
 async def skip_review(message: Message, state: FSMContext):
     data = await state.get_data()
     order_id = data.get("review_order")
@@ -818,9 +935,12 @@ async def process_review(message: Message, state: FSMContext, bot: Bot):
     if not review:
         lang = data.get("language", "ru")
         prompt = msg(lang, "review_prompt")
-        await message.answer(prompt, reply_markup=kb_review())
+        await message.answer(prompt, reply_markup=kb_review(lang))
         return
-    await bot.send_message(WORKER_ID, f"💬 <b>Новый отзыв по заявке / 💬 <b>Өтіністі бойынша жаңа пікір <code>{order_id}</code></b>\n\n{escape(review)}")
+    if data.get("language", "ru") == "ru":
+        await bot.send_message(WORKER_ID, f"💬 <b>Новый отзыв по заявке <code>{order_id}</code></b>\n\n{escape(review)}")
+    else:
+        await bot.send_message(WORKER_ID, f"💬 <b>Өтінім бойынша жаңа пікір <code>{order_id}</code></b>\n\n{escape(review)}")
     await save_review(order_id, message.from_user.id, review_text=review)
     await state.clear()
     await state.set_state(Order.choosing_language)
@@ -846,7 +966,7 @@ async def review_invalid(message: Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("language", "ru")
     prompt = msg(lang, "review_prompt")
-    await message.answer(prompt, reply_markup=kb_review())
+    await message.answer(prompt, reply_markup=kb_review(lang))
 
 # ── Услуга ────────────────────────────────────────────────
 @client_router.message(IsClient(), Order.choosing_service, F.text.startswith("🗑"))
@@ -857,13 +977,15 @@ async def garbage_service(message: Message, state: FSMContext):
     await state.set_state(Order.choosing_block)
     prompt = msg(lang, "block_choice")
     prompt += msg(lang, "change_lang")
-    await message.answer(prompt, reply_markup=kb_blocks())
+    await message.answer(prompt, reply_markup=kb_blocks(lang))
 
 # ── Блок ──────────────────────────────────────────────────
 @client_router.message(IsClient(), Order.choosing_block, F.text.startswith("◀️"))
 async def block_back(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("language", "ru")
     await state.set_state(Order.choosing_service)
-    await message.answer("Выберите услугу / Қызметті таңдаңыз:", reply_markup=kb_main())
+    await message.answer(msg(lang, "welcome"), reply_markup=kb_main(lang))
 
 @client_router.message(IsClient(), Order.choosing_block, F.text.in_(BLOCKS))
 async def process_block(message: Message, state: FSMContext):
@@ -871,16 +993,18 @@ async def process_block(message: Message, state: FSMContext):
     data = await state.get_data()
     if data.get("editing"):
         await state.update_data(editing=False); await show_confirm(message, state); return
+    lang = data.get("language", "ru")
     await state.set_state(Order.entering_floor)
-    await message.answer("🪜 Введите номер этажа (1–30):", reply_markup=kb_nav())
+    await message.answer(msg(lang, "floor_prompt"), reply_markup=kb_nav(lang))
 
 @client_router.message(IsClient(), Order.choosing_block)
-async def block_invalid(message: Message):
-    await message.answer(
-        "⚠️ Выберите блок с помощью кнопок выше.\n\n"
-        "─────────────────────\n\n"
-        "⚠️ Жоғарыдағы түймелер арқылы блокты таңдаңыз."
-    )
+async def block_invalid(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("language", "ru")
+    if lang == "ru":
+        await message.answer("⚠️ Выберите блок с помощью кнопок выше.")
+    else:
+        await message.answer("⚠️ Жоғарыдағы түймелер арқылы блокты таңдаңыз.")
 
 # ── Этаж ──────────────────────────────────────────────────
 @client_router.message(IsClient(), Order.entering_floor, F.text.startswith("◀️"))
@@ -888,25 +1012,24 @@ async def floor_back(message: Message, state: FSMContext):
     data = await state.get_data()
     if data.get("editing"):
         await state.update_data(editing=False); await show_confirm(message, state); return
+    lang = data.get("language", "ru")
     await state.set_state(Order.choosing_block)
-    await message.answer("🏢 Укажите номер блока / 🏢 Блок номеріңізді көрсетіңіз:", reply_markup=kb_blocks())
+    await message.answer(msg(lang, "block_choice"), reply_markup=kb_blocks(lang))
 
 @client_router.message(IsClient(), Order.entering_floor)
 async def process_floor(message: Message, state: FSMContext):
     text = message.text.strip()
+    data = await state.get_data()
+    lang = data.get("language", "ru")
     if not text.isdigit() or not (1 <= int(text) <= 30):
-        await message.answer(
-            "🚫 Введите число от 1 до 30:\n\n"
-            "─────────────────────\n\n"
-            "🚫 1-ден 30-ға дейін сан енгізіңіз:"
-        )
+        await message.answer(msg(lang, "floor_invalid"))
         return
     await state.update_data(floor=int(text))
     data = await state.get_data()
     if data.get("editing"):
         await state.update_data(editing=False); await show_confirm(message, state); return
     await state.set_state(Order.entering_apt)
-    await message.answer("🚪 Введите номер квартиры / 🚪 Пәтер нөмерін енгізіңіз:", reply_markup=kb_nav())
+    await message.answer(msg(lang, "apt_prompt"), reply_markup=kb_nav(lang))
 
 # ── Квартира ──────────────────────────────────────────────
 @client_router.message(IsClient(), Order.entering_apt, F.text.startswith("◀️"))
@@ -917,7 +1040,7 @@ async def apt_back(message: Message, state: FSMContext):
     lang = data.get("language", "ru")
     await state.set_state(Order.entering_floor)
     prompt = msg(lang, "floor_prompt")
-    await message.answer(prompt, reply_markup=kb_nav())
+    await message.answer(prompt, reply_markup=kb_nav(lang))
 
 @client_router.message(IsClient(), Order.entering_apt)
 async def process_apt(message: Message, state: FSMContext):
@@ -953,7 +1076,7 @@ async def process_apt(message: Message, state: FSMContext):
     lang = data.get("language", "ru")
     await state.set_state(Order.choosing_trash)
     prompt = msg(lang, "trash_choice")
-    await message.answer(prompt, reply_markup=kb_trash())
+    await message.answer(prompt, reply_markup=kb_trash(lang))
 
 # ── Тип мусора ────────────────────────────────────────────
 @client_router.message(IsClient(), Order.choosing_trash, F.text.startswith("◀️"))
@@ -964,29 +1087,20 @@ async def trash_back(message: Message, state: FSMContext):
     lang = data.get("language", "ru")
     await state.set_state(Order.entering_apt)
     prompt = msg(lang, "apt_prompt")
-    await message.answer(prompt, reply_markup=kb_nav())
+    await message.answer(prompt, reply_markup=kb_nav(lang))
 
-@client_router.message(IsClient(), Order.choosing_trash, F.text.in_(TRASH_TYPES) | F.text.startswith("🏠 Бытовой") | F.text.startswith("🌳 Крупногаб") | F.text.startswith("♻️ Вторсырье") | F.text.startswith("🪟 Стеклопак"))
+@client_router.message(IsClient(), Order.choosing_trash, F.text.in_(TRASH_TYPES) | F.text.startswith("🏠") | F.text.startswith("🧱") | F.text.startswith("📦"))
 async def process_trash(message: Message, state: FSMContext):
-    trash = message.text.split("/")[0].strip()
+    lang = (await state.get_data()).get("language", "ru")
+    icon = message.text.split()[0] if message.text else ""
+    trash = TRASH_CANONICAL.get(icon, message.text.strip())
     await state.update_data(trash_type=trash, bags=None, price=None)
     data = await state.get_data()
     editing = data.get("editing")
-    if "Бытовой" in trash or "Тұрмыстық" in trash:
+    if trash == "🏠 Бытовой":
         if editing: await state.update_data(editing=False)
         await state.set_state(Order.entering_bags)
-        await message.answer(
-            "📦 Сколько мусорных пакетов (30–60 л)?\n\n"
-            "💰 <b>Тарифы:</b>\n• до 3 пакетов — 500 ₸\n"
-            "• до 6 — 1 000 ₸\n• до 10 — 1 500 ₸\n"
-            "• более 10 — по оценке сотрудника\n\nВведите количество\n\n"
-            "─────────────────────\n\n"
-            "📦 Қоқыс сәлінеде қанша (30–60 л)?\n\n"
-            "💰 <b>Тарифтар:</b>\n• 3 сәліне дейін — 500 ₸\n"
-            "• 6 дейін — 1 000 ₸\n• 10 дейін — 1 500 ₸\n"
-            "• 10-дан артық — қызметкердің бағалауы бойынша\n\nСаны енгізіңіз:",
-            reply_markup=kb_nav(),
-        )
+        await message.answer(msg(lang, "bags_prompt"), reply_markup=kb_nav(lang))
     else:
         if editing: await state.update_data(editing=False, photo_id=None)
         await ask_photo(message, state)
@@ -1004,8 +1118,9 @@ async def bags_back(message: Message, state: FSMContext):
     data = await state.get_data()
     if data.get("editing"):
         await state.update_data(editing=False); await show_confirm(message, state); return
+    lang = data.get("language", "ru")
     await state.set_state(Order.choosing_trash)
-    await message.answer("🗑 Выберите тип мусора / 🗑 Қоқыс түрін таңдаңыз:", reply_markup=kb_trash())
+    await message.answer(msg(lang, "trash_choice"), reply_markup=kb_trash(lang))
 
 @client_router.message(IsClient(), Order.entering_bags)
 async def process_bags(message: Message, state: FSMContext):
@@ -1029,12 +1144,13 @@ async def photo_back(message: Message, state: FSMContext):
     data = await state.get_data()
     if data.get("editing"):
         await state.update_data(editing=False); await show_confirm(message, state); return
+    lang = data.get("language", "ru")
     if data.get("trash_type") == "🏠 Бытовой" or "Бытовой" in str(data.get("trash_type")):
         await state.set_state(Order.entering_bags)
-        await message.answer("📦 Введите количество пакетов / 📦 Сәліне саны енгізіңіз:", reply_markup=kb_nav())
+        await message.answer(msg(lang, "bags_prompt"), reply_markup=kb_nav(lang))
     else:
         await state.set_state(Order.choosing_trash)
-        await message.answer("🗑 Выберите тип мусора / 🗑 Қоқыс түрін таңдаңыз:", reply_markup=kb_trash())
+        await message.answer(msg(lang, "trash_choice"), reply_markup=kb_trash(lang))
 
 @client_router.message(IsClient(), Order.sending_photo, F.photo)
 async def process_photo(message: Message, state: FSMContext):
@@ -1061,7 +1177,12 @@ async def time_back(message: Message, state: FSMContext):
 
 @client_router.message(IsClient(), Order.choosing_time, F.text.in_({"⚡ Сейчас", "🕐 В течение часа"}) | F.text.startswith("⚡") | F.text.startswith("🕐"))
 async def process_time_preset(message: Message, state: FSMContext):
-    label = "Сейчас" if "Сейчас" in message.text else "В течение часа"
+    data = await state.get_data()
+    lang = data.get("language", "ru")
+    if message.text.startswith("⚡"):
+        label = "Сейчас" if lang == "ru" else "Қазір"
+    else:
+        label = "В течение часа" if lang == "ru" else "Сағат ішінде"
     await state.update_data(order_time=label)
     data = await state.get_data()
     if data.get("editing"):
@@ -1075,7 +1196,7 @@ async def process_time_custom(message: Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("language", "ru")
     prompt = msg(lang, "time_custom_prompt", today=today)
-    await message.answer(prompt, reply_markup=kb_nav())
+    await message.answer(prompt, reply_markup=kb_nav(lang))
 
 @client_router.message(IsClient(), Order.choosing_time)
 async def time_invalid(message: Message, state: FSMContext):
@@ -1138,7 +1259,7 @@ async def ask_comment_text(message: Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("language", "ru")
     prompt = msg(lang, "comment_prompt")
-    await message.answer(prompt, reply_markup=kb_nav())
+    await message.answer(prompt, reply_markup=kb_nav(lang))
 
 @client_router.message(IsClient(), Order.asking_comment)
 async def comment_ask_invalid(message: Message, state: FSMContext):
@@ -1204,13 +1325,14 @@ async def edit_order(message: Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("language", "ru")
     prompt = "✏️ " + ("Что именно хотите изменить?" if lang == "ru" else "Нақты түзету қалайсыз?")
-    await message.answer(prompt, reply_markup=kb_edit(data))
+    await message.answer(prompt, reply_markup=kb_edit(data, lang))
 
 # ── Клиент принимает цену ─────────────────────────────────
 @client_router.message(IsClient(), Order.price_confirm, F.text.startswith("✅"))
 async def client_accept_price(message: Message, state: FSMContext, bot: Bot):
     data     = await state.get_data()
     order_id = data.get("order_id")
+    lang = data.get("language", "ru")
     order = await fetch_order(order_id) if order_id else None
     if not order or order["status"] != "price_sent":
         await state.clear()
@@ -1237,6 +1359,7 @@ async def client_accept_price(message: Message, state: FSMContext, bot: Bot):
     await state.set_state(Order.waiting_worker)
 
     order_data = order["data"]
+    lang = order_data.get("language", lang)
     photo_id   = order_data.get("photo_id")
     status_msg = msg(lang, "order_confirmed")
     text = order_summary(order_data, include_worker_price=True) + f"\n\n{status_msg}"
@@ -1245,7 +1368,10 @@ async def client_accept_price(message: Message, state: FSMContext, bot: Bot):
     else:
         await message.answer(text, reply_markup=ReplyKeyboardRemove())
 
-    final_text = f"✅ <b>Клиент подтвердил заказ! / ✅ <b>Клиент біліктемесін растады!</b>\n\n{order_summary(order_data, include_worker_price=True)}"
+    if lang == "ru":
+        final_text = f"✅ <b>Клиент подтвердил заказ!</b>\n\n{order_summary(order_data, include_worker_price=True, lang='ru')}"
+    else:
+        final_text = f"✅ <b>Клиент өтінімді растады!</b>\n\n{order_summary(order_data, include_worker_price=True, lang='kk')}"
     if photo_id:
         await bot.send_photo(WORKER_ID, photo=photo_id, caption=final_text, reply_markup=ikb_worker_status(order_id))
     else:
@@ -1256,45 +1382,52 @@ async def client_accept_price(message: Message, state: FSMContext, bot: Bot):
 async def edit_back(message: Message, state: FSMContext):
     await show_confirm(message, state)
 
-@client_router.message(IsClient(), Order.editing, F.text.startswith("🔄 Изменить блок"))
+@client_router.message(IsClient(), Order.editing, F.text.in_({BTN["ru"]["edit_block"], BTN["kk"]["edit_block"]}))
 async def edit_block(message: Message, state: FSMContext):
+    lang = (await state.get_data()).get("language", "ru")
     await state.update_data(editing=True); await state.set_state(Order.choosing_block)
-    await message.answer("🏢 Выберите новый блок / 🏢 Жаңа блок таңдаңыз:", reply_markup=kb_blocks())
+    await message.answer(msg(lang, "block_choice"), reply_markup=kb_blocks(lang))
 
-@client_router.message(IsClient(), Order.editing, F.text.startswith("🔄 Изменить этаж"))
+@client_router.message(IsClient(), Order.editing, F.text.in_({BTN["ru"]["edit_floor"], BTN["kk"]["edit_floor"]}))
 async def edit_floor(message: Message, state: FSMContext):
+    lang = (await state.get_data()).get("language", "ru")
     await state.update_data(editing=True); await state.set_state(Order.entering_floor)
-    await message.answer("🪜 Введите новый этаж / 🪜 Жаңа қабатты енгізіңіз:", reply_markup=kb_nav())
+    await message.answer(msg(lang, "floor_prompt"), reply_markup=kb_nav(lang))
 
-@client_router.message(IsClient(), Order.editing, F.text.startswith("🔄 Изменить квартиру"))
+@client_router.message(IsClient(), Order.editing, F.text.in_({BTN["ru"]["edit_apt"], BTN["kk"]["edit_apt"]}))
 async def edit_apt(message: Message, state: FSMContext):
+    lang = (await state.get_data()).get("language", "ru")
     await state.update_data(editing=True); await state.set_state(Order.entering_apt)
-    await message.answer("🚪 Введите новый номер квартиры / 🚪 Жаңа пәтер нөмерін енгізіңіз:", reply_markup=kb_nav())
+    await message.answer(msg(lang, "apt_prompt"), reply_markup=kb_nav(lang))
 
-@client_router.message(IsClient(), Order.editing, F.text.startswith("🔄 Изменить тип мусора"))
+@client_router.message(IsClient(), Order.editing, F.text.in_({BTN["ru"]["edit_trash"], BTN["kk"]["edit_trash"]}))
 async def edit_trash(message: Message, state: FSMContext):
+    lang = (await state.get_data()).get("language", "ru")
     await state.update_data(editing=True); await state.set_state(Order.choosing_trash)
-    await message.answer("🗑 Выберите новый тип мусора / 🗑 Жаңа қоқыс түрін таңдаңыз:", reply_markup=kb_trash())
+    await message.answer(msg(lang, "trash_choice"), reply_markup=kb_trash(lang))
 
-@client_router.message(IsClient(), Order.editing, F.text.startswith("🔄 Изменить кол-во пакетов"))
+@client_router.message(IsClient(), Order.editing, F.text.in_({BTN["ru"]["edit_bags"], BTN["kk"]["edit_bags"]}))
 async def edit_bags(message: Message, state: FSMContext):
+    lang = (await state.get_data()).get("language", "ru")
     await state.update_data(editing=True); await state.set_state(Order.entering_bags)
-    await message.answer("📦 Введите новое количество пакетов / 📦 Жаңа сәліне санын енгізіңіз:", reply_markup=kb_nav())
+    await message.answer(msg(lang, "bags_prompt"), reply_markup=kb_nav(lang))
 
 @client_router.message(IsClient(), Order.editing, F.text.startswith("🔄 Изменить фото"))
 async def edit_photo(message: Message, state: FSMContext):
     await state.update_data(editing=True, photo_id=None)
     await ask_photo(message, state)
 
-@client_router.message(IsClient(), Order.editing, F.text.startswith("🔄 Изменить время"))
+@client_router.message(IsClient(), Order.editing, F.text.in_({BTN["ru"]["edit_time"], BTN["kk"]["edit_time"]}))
 async def edit_time(message: Message, state: FSMContext):
+    lang = (await state.get_data()).get("language", "ru")
     await state.update_data(editing=True); await state.set_state(Order.choosing_time)
-    await message.answer("⏰ Когда вы хотите принять заказ? / ⏰ Өтіністі қашан қабылдағыңыз келеді?", reply_markup=kb_time())
+    await message.answer(msg(lang, "time_choice"), reply_markup=kb_time(lang))
 
-@client_router.message(IsClient(), Order.editing, F.text.startswith("🔄 Изменить комментарий"))
+@client_router.message(IsClient(), Order.editing, F.text.in_({BTN["ru"]["edit_comment"], BTN["kk"]["edit_comment"]}))
 async def edit_comment(message: Message, state: FSMContext):
+    lang = (await state.get_data()).get("language", "ru")
     await state.update_data(editing=True); await state.set_state(Order.asking_comment)
-    await message.answer("💬 Хотите добавить комментарий? / 💬 Пікір қосқыңыз келе ме?", reply_markup=kb_comment())
+    await message.answer(msg(lang, "comment_choice"), reply_markup=kb_comment(lang))
 
 # ══════════════════════════════════ ЗАПУСК ═════════════════
 async def main():
