@@ -408,7 +408,7 @@ async def show_confirm(message: Message, state: FSMContext):
     await state.set_state(Order.confirming)
     data = await state.get_data()
     photo_id = data.get("photo_id")
-    text = order_summary(data) + "\n\n<b>Всё верно? / Барлық дұрыс па?</b>"
+    text = order_summary(data) + "\n\n<b>Всё верно?</b>\n\n─────────────────────\n\n<b>Барлық дұрыс па?</b>"
     if photo_id:
         await message.answer_photo(photo=photo_id, caption=text, reply_markup=kb_confirm())
     else:
@@ -416,11 +416,21 @@ async def show_confirm(message: Message, state: FSMContext):
 
 async def go_to_comment(message: Message, state: FSMContext):
     await state.set_state(Order.asking_comment)
-    await message.answer("💬 Хотите добавить комментарий к заявке? / 💬 Өтіністіге пікір қосқыңыз келе ме?", reply_markup=kb_comment())
+    await message.answer(
+        "💬 Хотите добавить комментарий к заявке?\n\n"
+        "─────────────────────\n\n"
+        "💬 Өтіністіге пікір қосқыңыз келе ме?",
+        reply_markup=kb_comment()
+    )
 
 async def go_to_time(message: Message, state: FSMContext):
     await state.set_state(Order.choosing_time)
-    await message.answer("⏰ Когда вы хотите принять заказ? / ⏰ Өтіністі қашан қабылдағыңыз келеді?", reply_markup=kb_time())
+    await message.answer(
+        "⏰ Когда вы хотите принять заказ?\n\n"
+        "─────────────────────\n\n"
+        "⏰ Өтіністі қашан қабылдағыңыз келеді?",
+        reply_markup=kb_time()
+    )
 
 async def ask_photo(message: Message, state: FSMContext):
     data = await state.get_data()
@@ -430,21 +440,50 @@ async def ask_photo(message: Message, state: FSMContext):
         bags  = data.get("bags") or 0
         price = get_price(bags)
         await state.update_data(price=price)
-        note = "💰 Стоимость рассчитывается сотрудником по фото. / 💰 Баланы фото арқылы қызметкер есептейді." if bags > 10 else f"💰 Стоимость вывоза: <b>{price}</b> / 💰 Шығару құны: <b>{price}</b>"
-        await message.answer(f"{note}\n\n📸 Пришлите фото мусора / 📸 Қоқыстың суретін жібер:", reply_markup=kb_nav())
+        if bags > 10:
+            note_ru = "💰 Стоимость рассчитывается сотрудником по фото."
+            note_kk = "💰 Баланы фото арқылы қызметкер есептейді."
+        else:
+            note_ru = f"💰 Стоимость вывоза: <b>{price}</b>"
+            note_kk = f"💰 Шығару құны: <b>{price}</b>"
+        
+        await message.answer(
+            f"{note_ru}\n\n"
+            f"📸 Пришлите фото мусора\n\n"
+            f"─────────────────────\n\n"
+            f"{note_kk}\n\n"
+            f"📸 Қоқыстың суретін жібер:",
+            reply_markup=kb_nav()
+        )
     else:
         await message.answer(
-            f"📸 Для <b>{trash}</b> цена рассчитывается сотрудником. / 📸 <b>{trash}</b> үшін баланы қызметкер есептейді.\\n\\nПришлите фото мусора / Қоқыстың суретін жібер:",
+            f"📸 Для <b>{trash}</b> цена рассчитывается сотрудником.\n\n"
+            f"Пришлите фото мусора\n\n"
+            f"─────────────────────\n\n"
+            f"📸 <b>{trash}</b> үшін баланы қызметкер есептейді.\n\n"
+            f"Қоқыстың суретін жібер:",
             reply_markup=kb_nav(),
         )
 
 async def send_order_to_worker(bot: Bot, data: dict, order_id: str, needs_price: bool):
     photo_id = data.get("photo_id")
-    text = (
-        f"📬 <b>Новая заявка! / 📬 <b>Жаңа өтіністі!</b>\n\n{order_summary(data)}\n\n"
-        + ("💰 <b>Укажите цену для клиента: / 💰 <b>Клиентке баланы қойыңыз:</b>" if needs_price
-           else "ℹ️ Цена фиксированная. Можете приступать! / ℹ️ Баланы бекітіліген. Басталуға болады!")
-    )
+    if needs_price:
+        text = (
+            f"📬 <b>Новая заявка!</b>\n\n{order_summary(data)}\n\n"
+            f"💰 <b>Укажите цену для клиента:</b>\n\n"
+            f"─────────────────────\n\n"
+            f"📬 <b>Жаңа өтіністі!</b>\n\n{order_summary(data)}\n\n"
+            f"💰 <b>Клиентке баланы қойыңыз:</b>"
+        )
+    else:
+        text = (
+            f"📬 <b>Новая заявка!</b>\n\n{order_summary(data)}\n\n"
+            f"ℹ️ Цена фиксированная. Можете приступать!\n\n"
+            f"─────────────────────\n\n"
+            f"📬 <b>Жаңа өтіністі!</b>\n\n{order_summary(data)}\n\n"
+            f"ℹ️ Баланы бекітіліген. Басталуға болады!"
+        )
+    
     kb = ikb_worker_new(order_id) if needs_price else ikb_worker_status(order_id)
     if photo_id:
         msg = await bot.send_photo(WORKER_ID, photo=photo_id, caption=text, reply_markup=kb)
