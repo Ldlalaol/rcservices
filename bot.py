@@ -885,8 +885,10 @@ async def apt_back(message: Message, state: FSMContext):
     data = await state.get_data()
     if data.get("editing"):
         await state.update_data(editing=False); await show_confirm(message, state); return
+    lang = data.get("language", "ru")
     await state.set_state(Order.entering_floor)
-    await message.answer("🪜 Введите номер этажа (1–30) / 🪜 Қабат нөмерін (1–30) енгізіңіз:", reply_markup=kb_nav())
+    prompt = msg(lang, "floor_prompt")
+    await message.answer(prompt, reply_markup=kb_nav())
 
 @client_router.message(IsClient(), Order.entering_apt)
 async def process_apt(message: Message, state: FSMContext):
@@ -896,21 +898,19 @@ async def process_apt(message: Message, state: FSMContext):
 
     # Разрешаем: 68, 68а, 68б и т.д.
     if not re.fullmatch(r"\d+[а-яa-z]?", text):
-        await message.answer(
-            "🚫 Введите корректный номер квартиры (например: 68 или 68А):\n\n"
-            "─────────────────────\n\n"
-            "🚫 Дұрыс пәтер нөмерін енгізіңіз (мысалы: 68 немесе 68А):"
-        )
+        data = await state.get_data()
+        lang = data.get("language", "ru")
+        error = msg(lang, "apt_invalid_format")
+        await message.answer(error)
         return
 
     num = int(re.match(r"\d+", text).group())
 
     if num > 153:
-        await message.answer(
-            "🚫 Такой квартиры нет. Введите номер квартиры от 1 до 153:\n\n"
-            "─────────────────────\n\n"
-            "🚫 Мындай пәтер жоқ. Пәтер нөмерін 1-ден 153-ке дейін енгізіңіз:"
-        )
+        data = await state.get_data()
+        lang = data.get("language", "ru")
+        error = msg(lang, "apt_invalid_max")
+        await message.answer(error)
         return
 
     await state.update_data(apt=text.upper())
@@ -921,8 +921,10 @@ async def process_apt(message: Message, state: FSMContext):
         await show_confirm(message, state)
         return
 
+    lang = data.get("language", "ru")
     await state.set_state(Order.choosing_trash)
-    await message.answer("🗑 Выберите тип мусора:", reply_markup=kb_trash())
+    prompt = msg(lang, "trash_choice")
+    await message.answer(prompt, reply_markup=kb_trash())
 
 # ── Тип мусора ────────────────────────────────────────────
 @client_router.message(IsClient(), Order.choosing_trash, F.text.startswith("◀️"))
@@ -930,8 +932,10 @@ async def trash_back(message: Message, state: FSMContext):
     data = await state.get_data()
     if data.get("editing"):
         await state.update_data(editing=False); await show_confirm(message, state); return
+    lang = data.get("language", "ru")
     await state.set_state(Order.entering_apt)
-    await message.answer("🚪 Введите номер квартиры / 🚪 Квартира нөмеріңізді енгізіңіз:", reply_markup=kb_nav())
+    prompt = msg(lang, "apt_prompt")
+    await message.answer(prompt, reply_markup=kb_nav())
 
 @client_router.message(IsClient(), Order.choosing_trash, F.text.in_(TRASH_TYPES) | F.text.startswith("🏠 Бытовой") | F.text.startswith("🌳 Крупногаб") | F.text.startswith("♻️ Вторсырье") | F.text.startswith("🪟 Стеклопак"))
 async def process_trash(message: Message, state: FSMContext):
@@ -961,10 +965,11 @@ async def process_trash(message: Message, state: FSMContext):
 @client_router.message(IsClient(), Order.choosing_trash)
 async def trash_invalid(message: Message):
     await message.answer(
-        "⚠️ Выберите тип мусора с помощью кнопок выше.\n\n"
-        "─────────────────────\n\n"
-        "⚠️ Жоғарыдағы түймелер арқылы қоқыс түрін таңдаңыз."
-    )
+async def trash_invalid(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("language", "ru")
+    error = msg(lang, "trash_invalid")
+    await message.answer(error)
 
 # ── Кол-во пакетов ────────────────────────────────────────
 @client_router.message(IsClient(), Order.entering_bags, F.text.startswith("◀️"))
@@ -979,11 +984,10 @@ async def bags_back(message: Message, state: FSMContext):
 async def process_bags(message: Message, state: FSMContext):
     text = message.text.strip()
     if not text.isdigit() or int(text) <= 0:
-        await message.answer(
-            "🚫 Введите корректное количество пакетов:\n\n"
-            "─────────────────────\n\n"
-            "🚫 Дұрыс сәліне саны енгізіңіз:"
-        )
+        data = await state.get_data()
+        lang = data.get("language", "ru")
+        error = msg(lang, "bags_invalid")
+        await message.answer(error)
         return
     bags = int(text)
     await state.update_data(bags=bags, price=get_price(bags))
@@ -1015,7 +1019,11 @@ async def process_photo(message: Message, state: FSMContext):
 
 @client_router.message(IsClient(), Order.sending_photo)
 async def photo_invalid(message: Message):
-    await message.answer("📸 Пожалуйста, отправьте <b>фотографию</b> мусора. / 📸 Өтінегі <b>қоқыстың суретін</b> жібер.ink.")
+async def photo_invalid(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("language", "ru")
+    error = msg(lang, "photo_invalid")
+    await message.answer(error)
 
 # ── Время ─────────────────────────────────────────────────
 @client_router.message(IsClient(), Order.choosing_time, F.text.startswith("◀️"))
@@ -1038,24 +1046,18 @@ async def process_time_preset(message: Message, state: FSMContext):
 async def process_time_custom(message: Message, state: FSMContext):
     today = datetime.now().strftime("%d.%m.%Y")
     await state.set_state(Order.entering_time)
-    await message.answer(
-        f"⚠️ Заявку можно оставить только на <b>сегодня ({today})</b>.\n\n"
-        "Введите время в формате <b>ЧЧ:ММ</b> (например, 14:30).\n"
-        "Доступное время: 09:00 – 18:00.\n\n"
-        "─────────────────────\n\n"
-        f"⚠️ Өтіністі тек <b>бүгінге ({today})</b> ғана қалдыруға болады.\n\n"
-        "Уақытты <b>СС:ММ</b> форматында енгізіңіз (мысалы, 14:30).\n"
-        "Қолжетімді уақыт: 09:00 – 18:00.",
-        reply_markup=kb_nav(),
-    )
+    data = await state.get_data()
+    lang = data.get("language", "ru")
+    prompt = msg(lang, "time_custom_prompt", today=today)
+    await message.answer(prompt, reply_markup=kb_nav())
 
 @client_router.message(IsClient(), Order.choosing_time)
 async def time_invalid(message: Message):
-    await message.answer(
-        "⚠️ Выберите вариант с помощью кнопок выше.\n\n"
-        "─────────────────────\n\n"
-        "⚠️ Жоғарыдағы түймелер арқылы опцияны таңдаңыз."
-    )
+async def time_invalid(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("language", "ru")
+    error = msg(lang, "time_invalid")
+    await message.answer(error)
 
 @client_router.message(IsClient(), Order.entering_time, F.text.startswith("◀️"))
 async def entering_time_back(message: Message, state: FSMContext):
@@ -1071,18 +1073,16 @@ async def process_entering_time(message: Message, state: FSMContext):
         t = datetime.strptime(text, "%H:%M")
         h = t.hour
     except ValueError:
-        await message.answer(
-            "🚫 Неверный формат. Введите как <b>ЧЧ:ММ</b>, например 14:30\n\n"
-            "─────────────────────\n\n"
-            "🚫 Бұл формат дұрыс емес. <b>СС:ММ</b> форматында енгізіңіз, мысалы 14:30:"
-        )
+        data = await state.get_data()
+        lang = data.get("language", "ru")
+        error = msg(lang, "time_format_error")
+        await message.answer(error)
         return
     if not (9 <= h < 18):
-        await message.answer(
-            "🚫 Время должно быть в диапазоне <b>09:00 – 18:00</b>\n\n"
-            "─────────────────────\n\n"
-            "🚫 Уақыт <b>09:00 – 18:00</b> аралығында болуы керек:"
-        )
+        data = await state.get_data()
+        lang = data.get("language", "ru")
+        error = msg(lang, "time_range_error")
+        await message.answer(error)
         return
     today = datetime.now().strftime("%d.%m.%Y")
     await state.update_data(order_time=f"{text} ({today})")
@@ -1114,11 +1114,11 @@ async def ask_comment_text(message: Message, state: FSMContext):
 
 @client_router.message(IsClient(), Order.asking_comment)
 async def comment_ask_invalid(message: Message):
-    await message.answer(
-        "⚠️ Выберите вариант с помощью кнопок выше.\n\n"
-        "─────────────────────\n\n"
-        "⚠️ Жоғарыдағы түймелер арқылы опцияны таңдаңыз."
-    )
+async def comment_ask_invalid(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("language", "ru")
+    error = msg(lang, "comment_invalid")
+    await message.answer(error)
 
 @client_router.message(IsClient(), Order.entering_comment, F.text.startswith("◀️"))
 async def comment_back(message: Message, state: FSMContext):
