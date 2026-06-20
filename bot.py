@@ -255,6 +255,7 @@ class Worker(StatesGroup):
     entering_price = State()
 
 class Order(StatesGroup):
+    choosing_language = State()
     choosing_service = State()
     choosing_block   = State()
     entering_floor   = State()
@@ -376,6 +377,99 @@ def ikb_worker_on_way(order_id: str) -> InlineKeyboardMarkup:
 TRASH_TYPES = {"🏠 Бытовой", "🧱 Строительный", "📦 Крупногабаритный"}
 BLOCKS      = {"Блок 1", "Блок 2", "Блок 3", "Блок 4", "Блок 5", "Блок 6"}
 NEEDS_PRICE = {"🧱 Строительный", "📦 Крупногабаритный"}
+
+# ── Тексты на двух языках ─────────────────────────────────
+MESSAGES = {
+    "ru": {
+        "welcome": "👋 Добро пожаловать в сервис вашего жилого комплекса!\n\n⏰ <b>Обратите внимание:</b> услуги выполняются с 09:00 до 18:00.\n\nВыберите нужную услугу 👇",
+        "choose_language": "Выберите язык / Тілді таңдаңыз:",
+        "service": "Вынос мусора",
+        "block_choice": "🏢 Укажите номер вашего блока",
+        "floor_prompt": "🪜 Введите номер этажа (1–30):",
+        "floor_invalid": "🚫 Введите число от 1 до 30:",
+        "apt_prompt": "🚪 Введите номер квартиры",
+        "apt_invalid_format": "🚫 Введите корректный номер квартиры (например: 68 или 68А):",
+        "apt_invalid_max": "🚫 Такой квартиры нет. Введите номер квартиры от 1 до 153:",
+        "trash_choice": "🗑 Выберите тип мусора",
+        "trash_invalid": "⚠️ Выберите тип мусора с помощью кнопок выше.",
+        "bags_prompt": "📦 Сколько мусорных пакетов (30–60 л)?\n\n💰 <b>Тарифы:</b>\n• до 3 пакетов — 500 ₸\n• до 6 — 1 000 ₸\n• до 10 — 1 500 ₸\n• более 10 — по оценке сотрудника\n\nВведите количество",
+        "bags_invalid": "🚫 Введите корректное количество пакетов:",
+        "photo_prompt_domestic": "💰 Стоимость вывоза: <b>{price}</b>\n\n📸 Пришлите фото мусора",
+        "photo_prompt_domestic_calc": "💰 Стоимость рассчитывается сотрудником по фото.\n\n📸 Пришлите фото мусора",
+        "photo_prompt_other": "📸 Для <b>{trash}</b> цена рассчитывается сотрудником.\n\nПришлите фото мусора",
+        "photo_invalid": "📸 Пожалуйста, отправьте <b>фотографию</b> мусора.",
+        "time_choice": "⏰ Когда вы хотите принять заказ?",
+        "time_custom_prompt": "⚠️ Заявку можно оставить только на <b>сегодня ({today})</b>.\n\nВведите время в формате <b>ЧЧ:ММ</b> (например, 14:30).\nДоступное время: 09:00 – 18:00.",
+        "time_invalid": "⚠️ Выберите вариант с помощью кнопок выше.",
+        "time_format_error": "🚫 Неверный формат. Введите как <b>ЧЧ:ММ</b>, например 14:30",
+        "time_range_error": "🚫 Время должно быть в диапазоне <b>09:00 – 18:00</b>",
+        "comment_choice": "💬 Хотите добавить комментарий к заявке?",
+        "comment_prompt": "✏️ Напишите ваш комментарий",
+        "comment_invalid": "⚠️ Выберите вариант с помощью кнопок выше.",
+        "confirm_prompt": "<b>Всё верно?</b>",
+        "change_lang": "\n\n💬 <i>Чтобы изменить язык, введите /start</i>",
+        "summary": "📋 <b>Заявка <code>{order_id}</code></b>",
+        "order_waiting": "⏳ <b>Заявка отправлена работнику!</b>\n\nОжидайте — работник оценит объём и пришлёт вам цену.",
+        "order_confirmed": "⏳ <b>Статус: В ожидании</b>\n\nСотрудник скоро придёт к вам!",
+        "cancel_msg": "❌ Заявка отменена. Возвращаемся в главное меню.",
+        "help_text": "<b>Служба поддержки ЖК</b>\n\nТелефон: +7 (XXX) XXX-XX-XX\nВремя работы: 09:00 — 18:00",
+        "price_sent": "💰 <b>Работник оценил вашу заявку!</b>",
+        "price_waiting": "💰 <b>Укажите цену для клиента:</b>",
+        "price_fixed": "ℹ️ Цена фиксированная. Можете приступать!",
+        "on_way": "🚗 <b>Статус заявки <code>{order_id}</code>: Работник едет к вам!</b>",
+        "done": "✅ <b>Статус заявки <code>{order_id}</code>: Выполнено!</b>\n\nСпасибо, что воспользовались нашим сервисом!\nНапишите отзыв о выполненной работе или нажмите кнопку ниже, чтобы пропустить.",
+        "worker_welcome": "👷 Добро пожаловать, сотрудник!\n\nСюда будут приходить заявки от клиентов.\nПо заявкам с оценкой — нажмите «💰 Указать цену».\nПо готовым заявкам — меняйте статус кнопками под сообщением.\n\nНачните работу!",
+        "review_prompt": "Напишите отзыв текстом или нажмите «⏭ Пропустить отзыв».",
+        "review_thank": "Спасибо за отзыв! Возвращаемся в главное меню.",
+    },
+    "kk": {
+        "welcome": "👋 Өз пәтерінің қызметіне қош келдіңіз!\n\n⏰ <b>Ескертпе:</b> қызметтері сағат 09:00-ден 18:00-ға дейін.\n\nҚажетті қызметті таңдаңыз 👇",
+        "choose_language": "Выберите язык / Тілді таңдаңыз:",
+        "service": "Қоқысты шығару",
+        "block_choice": "🏢 Блок номеріңізді көрсетіңіз",
+        "floor_prompt": "🪜 Қабат нөмерін (1–30) енгізіңіз:",
+        "floor_invalid": "🚫 1-ден 30-ға дейін сан енгізіңіз:",
+        "apt_prompt": "🚪 Пәтер нөмерін енгізіңіз",
+        "apt_invalid_format": "🚫 Дұрыс пәтер нөмерін енгізіңіз (мысалы: 68 немесе 68А):",
+        "apt_invalid_max": "🚫 Мындай пәтер жоқ. Пәтер нөмерін 1-ден 153-ке дейін енгізіңіз:",
+        "trash_choice": "🗑 Қоқыс түрін таңдаңыз",
+        "trash_invalid": "⚠️ Жоғарыдағы түймелер арқылы қоқыс түрін таңдаңыз.",
+        "bags_prompt": "📦 Қоқыс сәлінеде қанша (30–60 л)?\n\n💰 <b>Тарифтар:</b>\n• 3 сәліне дейін — 500 ₸\n• 6 дейін — 1 000 ₸\n• 10 дейін — 1 500 ₸\n• 10-дан артық — қызметкердің бағалауы бойынша\n\nСаны енгізіңіз",
+        "bags_invalid": "🚫 Дұрыс сәліне саны енгізіңіз:",
+        "photo_prompt_domestic": "💰 Шығару құны: <b>{price}</b>\n\n📸 Қоқыстың суретін жібер",
+        "photo_prompt_domestic_calc": "💰 Баланы фото арқылы қызметкер есептейді.\n\n📸 Қоқыстың суретін жібер",
+        "photo_prompt_other": "📸 <b>{trash}</b> үшін баланы қызметкер есептейді.\n\nҚоқыстың суретін жібер",
+        "photo_invalid": "📸 Өтінегі <b>қоқыстың суретін</b> жібер.",
+        "time_choice": "⏰ Өтіністі қашан қабылдағыңыз келеді?",
+        "time_custom_prompt": "⚠️ Өтіністі тек <b>бүгінге ({today})</b> ғана қалдыруға болады.\n\nУақытты <b>СС:ММ</b> форматында енгізіңіз (мысалы, 14:30).\nҚолжетімді уақыт: 09:00 – 18:00.",
+        "time_invalid": "⚠️ Жоғарыдағы түймелер арқылы опцияны таңдаңыз.",
+        "time_format_error": "🚫 Бұл формат дұрыс емес. <b>СС:ММ</b> форматында енгізіңіз, мысалы 14:30:",
+        "time_range_error": "🚫 Уақыт <b>09:00 – 18:00</b> аралығында болуы керек:",
+        "comment_choice": "💬 Өтіністіге пікір қосқыңыз келе ме?",
+        "comment_prompt": "✏️ Өз пікіріңізді жазыңыз",
+        "comment_invalid": "⚠️ Жоғарыдағы түймелер арқылы опцияны таңдаңыз.",
+        "confirm_prompt": "<b>Барлық дұрыс па?</b>",
+        "change_lang": "\n\n💬 <i>Тілді өзгерту үшін /start енгізіңіз</i>",
+        "summary": "📋 <b>Өтіністі <code>{order_id}</code></b>",
+        "order_waiting": "⏳ <b>Өтіністі қызметкерге жіберді!</b>\n\nКүтіңіз — қызметкер көлемді бағалап, сізге баланы жіберді.",
+        "order_confirmed": "⏳ <b>Статус: Күтілуде</b>\n\nҚызметкер сізге тез келеді!",
+        "cancel_msg": "❌ Өтіністі бас тартылды. Басты мәзірге орал.",
+        "help_text": "<b>ЖК Қолдау Қызметі</b>\n\nТелефон: +7 (XXX) XXX-XX-XX\nЖұмыс уақыты: 09:00 — 18:00",
+        "price_sent": "💰 <b>Қызметкер сіздің өтіністіңізді бағалады!</b>",
+        "price_waiting": "💰 <b>Клиентке баланы қойыңыз:</b>",
+        "price_fixed": "ℹ️ Баланы бекітіліген. Басталуға болады!",
+        "on_way": "🚗 <b>Өтіністің статусы <code>{order_id}</code>: Қызметкер сізге баратын жолда!</b>",
+        "done": "✅ <b>Өтіністің статусы <code>{order_id}</code>: Орындалды!</b>\n\nБіздің қызметті пайдалағаныңыз үшін рахмет!\nОрындалған жұмыс туралы пікіріңізді жазыңыз немесе өткізу үшін төмендегі түймені басыңыз.",
+        "worker_welcome": "👷 Қош келдіңіз, сотрудник!\n\nМұнда клиенттердің өтіністері келеді.\nБаланы білдіруге тиісті өтіністер үшін — «💰 Баланы қойыңыз» басыңыз.\nДайын өтіністер үшін — хабар астындағы түймелер арқылы статусты өзгерту.\n\nЖұмысты бастаңыз!",
+        "review_prompt": "Пікіріңізді мәтін түрінде жазыңыз немесе «⏭ Отзывды өткізіңіз» басыңыз.",
+        "review_thank": "Пікіріңіз үшін рахмет! Басты мәзірге орал.",
+    }
+}
+
+def msg(lang: str, key: str, **kwargs) -> str:
+    """Получить сообщение на нужном языке"""
+    text = MESSAGES.get(lang, MESSAGES["ru"]).get(key, "")
+    return text.format(**kwargs) if kwargs else text
 
 def order_summary(data: dict, include_worker_price: bool = False) -> str:
     trash        = data.get("trash_type", "—")
@@ -629,29 +723,40 @@ async def cmd_start(message: Message, state: FSMContext):
     order_id = data.get("order_id")
     await update_order_status(order_id, "canceled")
     await state.clear()
-    await state.set_state(Order.choosing_service)
-    await message.answer(
+    await state.set_state(Order.choosing_language)
+    
+    welcome_text = (
         "👋 Добро пожаловать в сервис вашего жилого комплекса!\n\n"
         "⏰ <b>Обратите внимание:</b> услуги выполняются с 09:00 до 18:00.\n\n"
         "Выберите нужную услугу 👇\n\n"
         "─────────────────────\n\n"
         "👋 Өз пәтерінің қызметіне қош келдіңіз!\n\n"
         "⏰ <b>Ескертпе:</b> қызметтері сағат 09:00-ден 18:00-ға дейін.\n\n"
-        "Қажетті қызметті таңдаңыз 👇",
-        reply_markup=kb_main(),
+        "Қажетті қызметті таңдаңыз 👇"
     )
+    
+    lang_kb = ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="🇷🇺 Русский"), KeyboardButton(text="🇰🇿 Қазақша")]
+    ], resize_keyboard=True)
+    
+    await message.answer(welcome_text, reply_markup=lang_kb)
+
+@client_router.message(IsClient(), Order.choosing_language, F.text.in_({"🇷🇺 Русский", "🇰🇿 Қазақша"}))
+async def choose_language(message: Message, state: FSMContext):
+    lang = "ru" if "Русский" in message.text else "kk"
+    await state.update_data(language=lang)
+    await state.set_state(Order.choosing_service)
+    
+    welcome = msg(lang, "welcome")
+    await message.answer(welcome, reply_markup=kb_main())
 
 @client_router.message(IsClient(), F.text.startswith("🆘"))
-async def help_handler(message: Message):
-    await message.answer(
-        "<b>Служба поддержки ЖК</b>\n\n"
-        "Телефон: +7 (XXX) XXX-XX-XX\n"
-        "Время работы: 09:00 — 18:00\n\n"
-        "─────────────────────\n\n"
-        "<b>ЖК Қолдау Қызметі</b>\n\n"
-        "Телефон: +7 (XXX) XXX-XX-XX\n"
-        "Жұмыс уақыты: 09:00 — 18:00"
-    )
+async def help_handler(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("language", "ru")
+    help_text = msg(lang, "help_text")
+    help_text += msg(lang, "change_lang")
+    await message.answer(help_text)
 
 @client_router.message(IsClient(), F.text.startswith("❌"))
 async def cancel_handler(message: Message, state: FSMContext, bot: Bot):
@@ -659,6 +764,7 @@ async def cancel_handler(message: Message, state: FSMContext, bot: Bot):
     data          = await state.get_data()
     current_state = await state.get_state()
     order_id  = data.get("order_id")
+    lang      = data.get("language", "ru")
 
     if current_state == Order.price_confirm.state and order_id:
         await update_order_status(order_id, "price_declined")
@@ -667,11 +773,23 @@ async def cancel_handler(message: Message, state: FSMContext, bot: Bot):
         await update_order_status(order_id, "canceled")
 
     await state.clear()
-    await state.set_state(Order.choosing_service)
-    await message.answer(
-        "❌ Заявка отменена. Возвращаемся в главное меню. / ❌ Өтіністі бас тартылды. Басты мәзірге орал.",
-        reply_markup=kb_main(),
+    await state.set_state(Order.choosing_language)
+    
+    welcome_text = (
+        "👋 Добро пожаловать в сервис вашего жилого комплекса!\n\n"
+        "⏰ <b>Обратите внимание:</b> услуги выполняются с 09:00 до 18:00.\n\n"
+        "Выберите нужную услугу 👇\n\n"
+        "─────────────────────\n\n"
+        "👋 Өз пәтерінің қызметіне қош келдіңіз!\n\n"
+        "⏰ <b>Ескертпе:</b> қызметтері сағат 09:00-ден 18:00-ға дейін.\n\n"
+        "Қажетті қызметті таңдаңыз 👇"
     )
+    
+    lang_kb = ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="🇷🇺 Русский"), KeyboardButton(text="🇰🇿 Қазақша")]
+    ], resize_keyboard=True)
+    
+    await message.answer(welcome_text, reply_markup=lang_kb)
 
 # ── Отзыв ─────────────────────────────────────────────────
 @client_router.message(IsClient(), Order.leaving_review, F.text == "⏭ Пропустить отзыв")
@@ -704,9 +822,13 @@ async def review_invalid(message: Message):
 # ── Услуга ────────────────────────────────────────────────
 @client_router.message(IsClient(), Order.choosing_service, F.text.startswith("🗑"))
 async def garbage_service(message: Message, state: FSMContext):
-    await state.update_data(service="Вынос мусора", order_id=generate_order_id())
+    data = await state.get_data()
+    lang = data.get("language", "ru")
+    await state.update_data(service=msg(lang, "service"), order_id=generate_order_id())
     await state.set_state(Order.choosing_block)
-    await message.answer("🏢 Укажите номер вашего блока / 🏢 Блок номеріңізді көрсетіңіз:", reply_markup=kb_blocks())
+    prompt = msg(lang, "block_choice")
+    prompt += msg(lang, "change_lang")
+    await message.answer(prompt, reply_markup=kb_blocks())
 
 # ── Блок ──────────────────────────────────────────────────
 @client_router.message(IsClient(), Order.choosing_block, F.text.startswith("◀️"))
