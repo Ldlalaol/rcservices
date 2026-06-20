@@ -714,6 +714,7 @@ async def cmd_start(message: Message, state: FSMContext):
     # Читаем данные ДО очистки состояния
     data     = await state.get_data()
     order_id = data.get("order_id")
+        lang     = data.get("language", "ru")
     await update_order_status(order_id, "canceled")
     await state.clear()
     await state.set_state(Order.choosing_language)
@@ -1174,6 +1175,7 @@ async def confirm_order(message: Message, state: FSMContext, bot: Bot):
     data        = await state.get_data()
     order_id    = data["order_id"]
     trash       = data.get("trash_type", "")
+        lang        = data.get("language", "ru")
     # FIX: используем or 0 чтобы избежать ошибки если bags == None
     bags        = data.get("bags") or 0
     needs_price = trash in NEEDS_PRICE or (trash == "🏠 Бытовой" and bags > 10)
@@ -1186,18 +1188,16 @@ async def confirm_order(message: Message, state: FSMContext, bot: Bot):
 
     if needs_price:
         await state.set_state(Order.waiting_price)
+        msg_text = msg(lang, "order_waiting")
         await message.answer(
-            "⏳ <b>Заявка отправлена работнику!</b>\n\n"
-            "Ожидайте — работник оценит объём и пришлёт вам цену.\n\n"
-            "─────────────────────\n\n"
-            "⏳ <b>Өтіністі қызметкерге жіберді!</b>\n\n"
-            "Күтіңіз — қызметкер көлемді бағалап, сізге баланы жіберді.",
+            msg_text,
             reply_markup=ReplyKeyboardRemove(),
         )
     else:
         await state.set_state(Order.waiting_worker)
         photo_id = data.get("photo_id")
-        text = order_summary(data) + "\n\n⏳ <b>Статус: В ожидании / Статус: Күтілуде</b>\n\nСотрудник скоро придёт к вам! / Қызметкер сізге тез келеді!"
+        status_msg = msg(lang, "order_confirmed")
+        text = order_summary(data) + f"\n\n{status_msg}"
         if photo_id:
             await message.answer_photo(photo=photo_id, caption=text, reply_markup=ReplyKeyboardRemove())
         else:
@@ -1209,7 +1209,9 @@ async def confirm_order(message: Message, state: FSMContext, bot: Bot):
 async def edit_order(message: Message, state: FSMContext):
     await state.set_state(Order.editing)
     data = await state.get_data()
-    await message.answer("✏️ Что именно хотите изменить? / ✏️ Нақты түзету қалайсыз?", reply_markup=kb_edit(data))
+    lang = data.get("language", "ru")
+    prompt = "✏️ " + ("Что именно хотите изменить?" if lang == "ru" else "Нақты түзету қалайсыз?")
+    await message.answer(prompt, reply_markup=kb_edit(data))
 
 # ── Клиент принимает цену ─────────────────────────────────
 @client_router.message(IsClient(), Order.price_confirm, F.text.startswith("✅"))
@@ -1219,8 +1221,23 @@ async def client_accept_price(message: Message, state: FSMContext, bot: Bot):
     order = await fetch_order(order_id) if order_id else None
     if not order or order["status"] != "price_sent":
         await state.clear()
-        await state.set_state(Order.choosing_service)
-        await message.answer("❌ Заявка не найдена или уже закрыта. Возвращаемся в главное меню. / ❌ Өтіністі таба алмадым немесе ол жабылды. Басты мәзірге орал.", reply_markup=kb_main())
+        await state.set_state(Order.choosing_language)
+        
+        welcome_text = (
+            "👋 Добро пожаловать в сервис вашего жилого комплекса!\n\n"
+            "⏰ <b>Обратите внимание:</b> услуги выполняются с 09:00 до 18:00.\n\n"
+            "Выберите нужную услугу 👇\n\n"
+            "─────────────────────\n\n"
+            "👋 Өз пәтерінің қызметіне қош келдіңіз!\n\n"
+            "⏰ <b>Ескертпе:</b> қызметтері сағат 09:00-ден 18:00-ға дейін.\n\n"
+            "Қажетті қызметті таңдаңыз 👇"
+        )
+        
+        lang_kb = ReplyKeyboardMarkup(keyboard=[
+            [KeyboardButton(text="🇷🇺 Русский"), KeyboardButton(text="🇰🇿 Қазақша")]
+        ], resize_keyboard=True)
+        
+        await message.answer(welcome_text, reply_markup=lang_kb)
         return
 
     await update_order_status(order_id, "waiting_worker")
@@ -1228,7 +1245,8 @@ async def client_accept_price(message: Message, state: FSMContext, bot: Bot):
 
     order_data = order["data"]
     photo_id   = order_data.get("photo_id")
-    text = order_summary(order_data, include_worker_price=True) + "\n\n⏳ <b>Статус: В ожидании / Статус: Күтілуде</b>\n\nСотрудник скоро придёт к вам! / Қызметкер сізге тез келеді!"
+    status_msg = msg(lang, "order_confirmed")
+    text = order_summary(order_data, include_worker_price=True) + f"\n\n{status_msg}"
     if photo_id:
         await message.answer_photo(photo=photo_id, caption=text, reply_markup=ReplyKeyboardRemove())
     else:
