@@ -462,11 +462,17 @@ client_router = Router()
 async def worker_start(message: Message, state: FSMContext):
     await state.set_state(Worker.ready)
     await message.answer(
-        "👷 Добро пожаловать, сотрудник! / 👷 Қош келдіңіз, сотрудник!\\n\\n"
-        "Сюда будут приходить заявки от клиентов. / Мұнда клиенттердің өтіністері келеді.\\n"
-        "По заявкам с оценкой — нажмите <b>«💰 Указать цену»</b>. / Баланы білдіруге тиісті өтіністер үшін — <b>«💰 Баланы қойыңыз»</b> басыңыз.\\n"
-        "По готовым заявкам — меняйте статус кнопками под сообщением. / Дайын өтіністер үшін — хабар астындағы түймелер арқылы статусты өзгерту.\\n\\n"
-        "Начните работу! / Жұмысты бастаңыз!",
+        "👷 Добро пожаловать, сотрудник!\n\n"
+        "Сюда будут приходить заявки от клиентов.\n"
+        "По заявкам с оценкой — нажмите «💰 Указать цену».\n"
+        "По готовым заявкам — меняйте статус кнопками под сообщением.\n\n"
+        "Начните работу!\n\n"
+        "─────────────────────\n\n"
+        "👷 Қош келдіңіз, сотрудник!\n\n"
+        "Мұнда клиенттердің өтіністері келеді.\n"
+        "Баланы білдіруге тиісті өтіністер үшін — «💰 Баланы қойыңыз» басыңыз.\n"
+        "Дайын өтіністер үшін — хабар астындағы түймелер арқылы статусты өзгерту.\n\n"
+        "Жұмысты бастаңыз!",
         reply_markup=ReplyKeyboardRemove(),
     )
 
@@ -500,12 +506,24 @@ async def worker_enter_price(message: Message, state: FSMContext, bot: Bot):
     order_data = {**order["data"], "worker_price": price}
     await update_order_worker_price(order_id, price, order_data)
     await state.set_state(Worker.ready)
-    await message.answer(f"✅ Баланы <b>{price} ₸</b> клиентке жіберді. Растауды күтіңіз. / ✅ Баланы <b>{price} ₸</b> клиентке жіберді. Растауды күтіңіз.")
+    await message.answer(
+        f"✅ Цена <b>{price} ₸</b> отправлена клиенту.\n"
+        f"Ожидайте подтверждения.\n\n"
+        f"─────────────────────\n\n"
+        f"✅ Баланы <b>{price} ₸</b> клиентке жіберді.\n"
+        f"Растауды күтіңіз."
+    )
 
     user_id  = order["user_id"]
     photo_id = order_data.get("photo_id")
     summary    = order_summary(order_data, include_worker_price=True)
-    client_text = f"💰 <b>Работник оценил вашу заявку! / 💰 <b>Қызметкер сіздің өтіністіңізді бағалады!</b>\n\n{summary}\n\nПодтверждаете заказ? / Өтіністі растайсыз ба?"
+    client_text = (
+        f"💰 <b>Работник оценил вашу заявку!</b>\n\n{summary}\n\n"
+        f"Подтверждаете заказ?\n\n"
+        f"─────────────────────\n\n"
+        f"💰 <b>Қызметкер сіздің өтіністіңізді бағалады!</b>\n\n{summary}\n\n"
+        f"Өтіністі растайсыз ба?"
+    )
 
     if photo_id:
         await bot.send_photo(user_id, photo=photo_id, caption=client_text, reply_markup=kb_price_confirm())
@@ -530,30 +548,38 @@ async def worker_status(callback: CallbackQuery, bot: Bot):
 
     if status == "on_way":
         if order["status"] != "waiting_worker":
-            await callback.answer("❌ Заявка уже в другом статусе. / ❌ Өтіністі өткөөл статустағы.", show_alert=True)
+            await callback.answer("❌ Заявка уже в другом статусе.", show_alert=True)
             return
         await update_order_status(order_id, "on_way")
         await callback.message.edit_reply_markup(reply_markup=ikb_worker_on_way(order_id))
-        await bot.send_message(user_id, f"🚗 <b>Статус заявки / Өтіністің статусы <code>{order_id}</code>: Работник едет к вам! / Қызметкер сізге баратын жолда!</b>")
-        await callback.answer("Статус: В пути / Статус: Жолда")
+        await bot.send_message(user_id, 
+            f"🚗 <b>Статус заявки <code>{order_id}</code>: Работник едет к вам!</b>\n\n"
+            f"─────────────────────\n\n"
+            f"🚗 <b>Өтіністің статусы <code>{order_id}</code>: Қызметкер сізге баратын жолда!</b>"
+        )
+        await callback.answer("Статус: В пути")
 
     elif status == "done":
         if order["status"] not in ("waiting_worker", "on_way"):
-            await callback.answer("❌ Заявка уже закрыта. / ❌ Өтіністі өткөөл жабылған.", show_alert=True)
+            await callback.answer("❌ Заявка уже закрыта.", show_alert=True)
             return
         await update_order_status(order_id, "done")
         await callback.message.edit_reply_markup(reply_markup=None)
-        await callback.message.answer(f"✅ Заявка / Өтіністі <code>{order_id}</code> выполнена и закрыта. / орындалды және жабылды.")
+        await callback.message.answer(f"✅ Заявка <code>{order_id}</code> выполнена и закрыта.")
         await bot.send_message(
             user_id,
-            f"✅ <b>Статус заявки / Өтіністің статусы <code>{order_id}</code>: Выполнено! / Орындалды!</b>\n\n"
-            "Спасибо, что воспользовались нашим сервисом! / Біздің қызметті пайдалағаныңыз үшін рахмет!\\n"
-            "Напишите отзыв о выполненной работе или нажмите кнопку ниже, чтобы пропустить. / Орындалған жұмыс туралы пікіріңізді жазыңыз немесе өткізу үшін төмендегі түймені басыңыз.",
+            f"✅ <b>Статус заявки <code>{order_id}</code>: Выполнено!</b>\n\n"
+            "Спасибо, что воспользовались нашим сервисом!\n"
+            "Напишите отзыв о выполненной работе или нажмите кнопку ниже, чтобы пропустить.\n\n"
+            "─────────────────────\n\n"
+            f"✅ <b>Өтіністің статусы <code>{order_id}</code>: Орындалды!</b>\n\n"
+            "Біздің қызметті пайдалағаныңыз үшін рахмет!\n"
+            "Орындалған жұмыс туралы пікіріңізді жазыңыз немесе өткізу үшін төмендегі түймені басыңыз.",
             reply_markup=kb_review(),
         )
         # Мёржим данные — не перезаписываем целиком
         await set_client_state(bot.id, user_id, Order.leaving_review, {"review_order": order_id})
-        await callback.answer("Заявка закрыта! / Өтіністі жабылды!")
+        await callback.answer("Заявка закрыта!")
 
 # ══════════════════════════════════ КЛИЕНТ ═════════════════
 
@@ -566,18 +592,26 @@ async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
     await state.set_state(Order.choosing_service)
     await message.answer(
-        "👋 Добро пожаловать в сервис вашего жилого комплекса! / 👋 Өз пәтерінің қызметіне қош келдіңіз!\\n\\n"
-        "⏰ <b>Обратите внимание:</b> услуги выполняются с 09:00 до 18:00. / ⏰ <b>Ескертпе:</b> қызметтері сағат 09:00-ден 18:00-ға дейін.\\n\\n"
-        "Выберите нужную услугу 👇 / Қажетті қызметті таңдаңыз 👇",
+        "👋 Добро пожаловать в сервис вашего жилого комплекса!\n\n"
+        "⏰ <b>Обратите внимание:</b> услуги выполняются с 09:00 до 18:00.\n\n"
+        "Выберите нужную услугу 👇\n\n"
+        "─────────────────────\n\n"
+        "👋 Өз пәтерінің қызметіне қош келдіңіз!\n\n"
+        "⏰ <b>Ескертпе:</b> қызметтері сағат 09:00-ден 18:00-ға дейін.\n\n"
+        "Қажетті қызметті таңдаңыз 👇",
         reply_markup=kb_main(),
     )
 
 @client_router.message(IsClient(), F.text.startswith("🆘"))
 async def help_handler(message: Message):
     await message.answer(
-        "📞 <b>Служба поддержки ЖК / ЖК Қолдау Қызметі</b>\n\n"
-        "Телефон / Телефон: +7 (XXX) XXX-XX-XX\n"
-        "Время работы / Жұмыс уақыты: 09:00 — 18:00"
+        "<b>Служба поддержки ЖК</b>\n\n"
+        "Телефон: +7 (XXX) XXX-XX-XX\n"
+        "Время работы: 09:00 — 18:00\n\n"
+        "─────────────────────\n\n"
+        "<b>ЖК Қолдау Қызметі</b>\n\n"
+        "Телефон: +7 (XXX) XXX-XX-XX\n"
+        "Жұмыс уақыты: 09:00 — 18:00"
     )
 
 @client_router.message(IsClient(), F.text.startswith("❌"))
@@ -909,8 +943,11 @@ async def confirm_order(message: Message, state: FSMContext, bot: Bot):
     if needs_price:
         await state.set_state(Order.waiting_price)
         await message.answer(
-            "⏳ <b>Заявка отправлена работнику! / ⏳ <b>Өтіністі қызметкерге жіберді!</b>\n\n"
-            "Ожидайте — работник оценит объём и пришлёт вам цену. / Күтіңіз — қызметкер көлемді бағалап, сізге баланы жіберді.",
+            "⏳ <b>Заявка отправлена работнику!</b>\n\n"
+            "Ожидайте — работник оценит объём и пришлёт вам цену.\n\n"
+            "─────────────────────\n\n"
+            "⏳ <b>Өтіністі қызметкерге жіберді!</b>\n\n"
+            "Күтіңіз — қызметкер көлемді бағалап, сізге баланы жіберді.",
             reply_markup=ReplyKeyboardRemove(),
         )
     else:
