@@ -5,7 +5,7 @@ import os
 import random
 import string
 from html import escape
-from datetime import datetime
+from datetime import datetime, timedelta, time
 from pathlib import Path
 
 import asyncpg
@@ -263,6 +263,65 @@ def get_price(bags: int, lang: str = "ru") -> str:
         return "1 500 ₸"
     return "по оценке сотрудника" if lang == "ru" else "қызметкердің бағалауы бойынша"
 
+WORK_START = time(9, 0)
+WORK_END = time(18, 0)
+
+
+def is_working_day(dt: datetime) -> bool:
+    return dt.weekday() < 5
+
+
+def is_within_working_hours(dt: datetime) -> bool:
+    return is_working_day(dt) and WORK_START <= dt.time() <= WORK_END
+
+
+def next_working_date(from_dt: datetime) -> datetime:
+    d = from_dt
+    while d.weekday() >= 5:
+        d += timedelta(days=1)
+    return d
+
+
+def nearest_working_date(now: datetime) -> datetime:
+    if not is_working_day(now):
+        return next_working_date(now)
+    if now.time() > WORK_END:
+        return next_working_date(now + timedelta(days=1))
+    return now
+
+
+def resolve_custom_datetime(now: datetime, requested_h: int, requested_m: int) -> tuple[datetime, bool]:
+    adjusted = False
+    target = nearest_working_date(now)
+    target_date = target.date()
+
+    req_time = time(requested_h, requested_m)
+    if req_time < WORK_START:
+        req_time = WORK_START
+        adjusted = True
+    elif req_time > WORK_END:
+        req_time = WORK_END
+        adjusted = True
+
+    result = datetime.combine(target_date, req_time)
+
+    # Если указанное время уже прошло сегодня, ставим ближайшее рабочее время.
+    if target_date == now.date() and is_working_day(now) and result < now:
+        rounded_min = now.minute if now.minute == 0 else now.minute + (5 - now.minute % 5)
+        hour = now.hour
+        if rounded_min >= 60:
+            hour += 1
+            rounded_min -= 60
+
+        if hour > WORK_END.hour or (hour == WORK_END.hour and rounded_min > WORK_END.minute):
+            next_day = next_working_date(now + timedelta(days=1))
+            result = datetime.combine(next_day.date(), WORK_START)
+        else:
+            result = datetime.combine(now.date(), time(hour, rounded_min))
+        adjusted = True
+
+    return result, adjusted
+
 # ═══════════════════════════════════════════ FSM ═══════════
 class Worker(StatesGroup):
     ready          = State()
@@ -504,7 +563,7 @@ TRASH_LOCALIZED = {
 # ── Тексты на двух языках ─────────────────────────────────
 MESSAGES = {
     "ru": {
-        "welcome": "👋 Добро пожаловать в сервис вашего жилого комплекса!\n\n⏰ <b>Обратите внимание:</b> услуги выполняются с 09:00 до 18:00.\n\nВыберите нужную услугу 👇",
+        "welcome": "👋 Добро пожаловать в сервис вашего жилого комплекса!\n\n⏰ <b>Обратите внимание:</b> услуги выполняются по будням с 09:00 до 18:00.\n📅 Суббота и воскресенье — выходные, в эти дни мы не работаем.\n\nВыберите нужную услугу 👇",
         "choose_language": "Выберите язык / Тілді таңдаңыз:",
         "service": "Вынос мусора",
         "block_choice": "🏢 Укажите номер вашего блока",
@@ -521,11 +580,13 @@ MESSAGES = {
         "photo_prompt_domestic_calc": "💰 Стоимость рассчитывается сотрудником по фото.\n\n📸 Пришлите фото мусора",
         "photo_prompt_other": "📸 Для <b>{trash}</b> цена рассчитывается сотрудником.\n\nПришлите фото мусора",
         "photo_invalid": "📸 Пожалуйста, отправьте <b>фотографию</b> мусора.",
-        "time_choice": "⏰ Когда вы хотите принять заказ?",
-        "time_custom_prompt": "⚠️ Заявку можно оставить только на <b>сегодня ({today})</b>.\n\nВведите время в формате <b>ЧЧ:ММ</b> (например, 14:30).\nДоступное время: 09:00 – 18:00.",
+        "time_choice": "⏰ Когда вы хотите принять заказ?\n\nℹ️ Работаем только по будням с 09:00 до 18:00.",
+        "time_custom_prompt": "⚠️ Заявка будет установлена на ближайшее рабочее время.\nБлижайший рабочий день: <b>{nearest_date}</b>.\n\nВведите время в формате <b>ЧЧ:ММ</b> (например, 14:30).\nРабочее время: 09:00 – 18:00.",
         "time_invalid": "⚠️ Выберите вариант с помощью кнопок ниже.",
         "time_format_error": "🚫 Неверный формат. Введите как <b>ЧЧ:ММ</b>, например 14:30",
         "time_range_error": "🚫 Время должно быть в диапазоне <b>09:00 – 18:00</b>",
+        "time_preset_unavailable": "⛔ Сейчас нельзя выбрать «Сейчас» или «В течение часа».\nМы работаем только по будням с 09:00 до 18:00.\n\nВыберите «🕒 Указать время» — заявка будет поставлена на ближайшее рабочее время.",
+        "time_custom_adjusted": "ℹ️ Установлено ближайшее рабочее время: <b>{time} ({date})</b>.",
         "comment_choice": "💬 Хотите добавить комментарий к заявке?",
         "comment_prompt": "✏️ Напишите ваш комментарий",
         "comment_invalid": "⚠️ Выберите вариант с помощью кнопок ниже.",
@@ -546,7 +607,7 @@ MESSAGES = {
         "review_thank": "Спасибо за отзыв! Возвращаемся в главное меню.",
     },
     "kk": {
-        "welcome": "👋 Өз пәтерінің қызметіне қош келдіңіз!\n\n⏰ <b>Ескертпе:</b> қызметтері сағат 09:00-ден 18:00-ға дейін.\n\nҚажетті қызметті таңдаңыз 👇",
+        "welcome": "👋 Өз пәтерінің қызметіне қош келдіңіз!\n\n⏰ <b>Ескертпе:</b> қызмет тек жұмыс күндері 09:00-ден 18:00-ге дейін орындалады.\n📅 Сенбі және жексенбі — демалыс, бұл күндері біз жұмыс істемейміз.\n\nҚажетті қызметті таңдаңыз 👇",
         "choose_language": "Выберите язык / Тілді таңдаңыз:",
         "service": "Қоқысты шығару",
         "block_choice": "🏢 Блок номеріңізді көрсетіңіз",
@@ -563,11 +624,13 @@ MESSAGES = {
         "photo_prompt_domestic_calc": "💰 Баланы фото арқылы қызметкер есептейді.\n\n📸 Қоқыстың суретін жібер",
         "photo_prompt_other": "📸 <b>{trash}</b> үшін баланы қызметкер есептейді.\n\nҚоқыстың суретін жібер",
         "photo_invalid": "📸 Өтінегі <b>қоқыстың суретін</b> жібер.",
-        "time_choice": "⏰ Өтіністі қашан қабылдағыңыз келеді?",
-        "time_custom_prompt": "⚠️ Өтіністі тек <b>бүгінге ({today})</b> ғана қалдыруға болады.\n\nУақытты <b>СС:ММ</b> форматында енгізіңіз (мысалы, 14:30).\nҚолжетімді уақыт: 09:00 – 18:00.",
+        "time_choice": "⏰ Өтіністі қашан қабылдағыңыз келеді?\n\nℹ️ Біз тек жұмыс күндері 09:00-ден 18:00-ге дейін жұмыс істейміз.",
+        "time_custom_prompt": "⚠️ Өтінім ең жақын жұмыс уақытына қойылады.\nЕң жақын жұмыс күні: <b>{nearest_date}</b>.\n\nУақытты <b>СС:ММ</b> форматында енгізіңіз (мысалы, 14:30).\nЖұмыс уақыты: 09:00 – 18:00.",
         "time_invalid": "⚠️ Төмендегі түймелер арқылы опцияны таңдаңыз.",
         "time_format_error": "🚫 Бұл формат дұрыс емес. <b>СС:ММ</b> форматында енгізіңіз, мысалы 14:30:",
         "time_range_error": "🚫 Уақыт <b>09:00 – 18:00</b> аралығында болуы керек:",
+        "time_preset_unavailable": "⛔ Қазір «Қазір» немесе «Сағат ішінде» таңдауға болмайды.\nБіз тек жұмыс күндері 09:00-ден 18:00-ге дейін жұмыс істейміз.\n\n«🕒 Уақытты көрсету» таңдаңыз — өтінім ең жақын жұмыс уақытына қойылады.",
+        "time_custom_adjusted": "ℹ️ Ең жақын жұмыс уақыты орнатылды: <b>{time} ({date})</b>.",
         "comment_choice": "💬 Өтіністіге пікір қосқыңыз келе ме?",
         "comment_prompt": "✏️ Өз пікіріңізді жазыңыз",
         "comment_invalid": "⚠️ Төмендегі түймелер арқылы опцияны таңдаңыз.",
@@ -880,11 +943,13 @@ async def cmd_start(message: Message, state: FSMContext):
     # Показываем экран выбора языка
     welcome_text = (
         "👋 Добро пожаловать в сервис вашего жилого комплекса!\n\n"
-        "⏰ <b>Обратите внимание:</b> услуги выполняются с 09:00 до 18:00.\n\n"
+        "⏰ <b>Обратите внимание:</b> услуги выполняются по будням с 09:00 до 18:00.\n"
+        "📅 Суббота и воскресенье — выходные, в эти дни мы не работаем.\n\n"
         "Выберите язык 👇\n\n"
         "─────────────────────\n\n"
         "👋 Өз пәтерінің қызметіне қош келдіңіз!\n\n"
-        "⏰ <b>Ескертпе:</b> қызметтері сағат 09:00-ден 18:00-ға дейін.\n\n"
+        "⏰ <b>Ескертпе:</b> қызмет тек жұмыс күндері 09:00-ден 18:00-ге дейін орындалады.\n"
+        "📅 Сенбі және жексенбі — демалыс, бұл күндері біз жұмыс істемейміз.\n\n"
         "Тілді таңдаңыз 👇"
     )
     
@@ -1229,6 +1294,12 @@ async def time_back(message: Message, state: FSMContext):
 async def process_time_preset(message: Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("language", "ru")
+
+    now = datetime.now()
+    if not is_within_working_hours(now):
+        await message.answer(msg(lang, "time_preset_unavailable"), reply_markup=kb_time(lang))
+        return
+
     if message.text.startswith("⚡"):
         label = "Сейчас" if lang == "ru" else "Қазір"
     else:
@@ -1241,11 +1312,12 @@ async def process_time_preset(message: Message, state: FSMContext):
 
 @client_router.message(IsClient(), Order.choosing_time, F.text.startswith("🕒"))
 async def process_time_custom(message: Message, state: FSMContext):
-    today = datetime.now().strftime("%d.%m.%Y")
+    now = datetime.now()
+    nearest_date = nearest_working_date(now).strftime("%d.%m.%Y")
     await state.set_state(Order.entering_time)
     data = await state.get_data()
     lang = data.get("language", "ru")
-    prompt = msg(lang, "time_custom_prompt", today=today)
+    prompt = msg(lang, "time_custom_prompt", nearest_date=nearest_date)
     await message.answer(prompt, reply_markup=kb_nav(lang))
 
 @client_router.message(IsClient(), Order.choosing_time)
@@ -1268,20 +1340,25 @@ async def process_entering_time(message: Message, state: FSMContext):
     try:
         t = datetime.strptime(text, "%H:%M")
         h = t.hour
+        m = t.minute
     except ValueError:
         data = await state.get_data()
         lang = data.get("language", "ru")
         error = msg(lang, "time_format_error")
         await message.answer(error)
         return
-    if not (9 <= h < 18):
-        data = await state.get_data()
-        lang = data.get("language", "ru")
-        error = msg(lang, "time_range_error")
-        await message.answer(error)
-        return
-    today = datetime.now().strftime("%d.%m.%Y")
-    await state.update_data(order_time=f"{text} ({today})")
+
+    data = await state.get_data()
+    lang = data.get("language", "ru")
+    scheduled_dt, adjusted = resolve_custom_datetime(datetime.now(), h, m)
+
+    out_time = scheduled_dt.strftime("%H:%M")
+    out_date = scheduled_dt.strftime("%d.%m.%Y")
+    await state.update_data(order_time=f"{out_time} ({out_date})")
+
+    if adjusted:
+        await message.answer(msg(lang, "time_custom_adjusted", time=out_time, date=out_date))
+
     data = await state.get_data()
     if data.get("editing"):
         await state.update_data(editing=False); await show_confirm(message, state); return
