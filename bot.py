@@ -7,6 +7,7 @@ import string
 from html import escape
 from datetime import datetime, timedelta, time
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import asyncpg
 
@@ -27,6 +28,15 @@ from aiogram.types import (
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+def local_now() -> datetime:
+    """Текущее локальное время бота в наивном datetime (для сравнений в логике)."""
+    tz_name = os.getenv("BOT_TIMEZONE", "Asia/Almaty")
+    try:
+        tz = ZoneInfo(tz_name)
+    except Exception:
+        tz = ZoneInfo("Asia/Almaty")
+    return datetime.now(tz).replace(tzinfo=None)
 
 def load_env_file(path: str = ".env") -> None:
     env_path = Path(path)
@@ -250,7 +260,7 @@ async def set_client_state(bot_id: int, user_id: int, state: State, data: dict |
 
 # ── Генерация номера заявки ───────────────────────────────
 def generate_order_id() -> str:
-    date = datetime.now().strftime("%d%m%y")
+    date = local_now().strftime("%d%m%y")
     rand = "".join(random.choices(string.ascii_uppercase + string.digits, k=4))
     return f"ЖК-{date}-{rand}"
 
@@ -737,7 +747,7 @@ async def go_to_time(message: Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("language", "ru")
     prompt = msg(lang, "time_choice")
-    allow_presets = is_within_working_hours(datetime.now())
+    allow_presets = is_within_working_hours(local_now())
     await message.answer(prompt, reply_markup=kb_time(lang, allow_presets=allow_presets))
 
 async def ask_photo(message: Message, state: FSMContext):
@@ -1311,7 +1321,7 @@ async def process_time_preset(message: Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("language", "ru")
 
-    now = datetime.now()
+    now = local_now()
     if not is_within_working_hours(now):
         await message.answer(msg(lang, "time_preset_unavailable"), reply_markup=kb_time(lang, allow_presets=False))
         return
@@ -1328,7 +1338,7 @@ async def process_time_preset(message: Message, state: FSMContext):
 
 @client_router.message(IsClient(), Order.choosing_time, F.text.startswith("🕒"))
 async def process_time_custom(message: Message, state: FSMContext):
-    now = datetime.now()
+    now = local_now()
     nearest_date = nearest_working_date(now).strftime("%d.%m.%Y")
     await state.set_state(Order.entering_time)
     data = await state.get_data()
@@ -1366,7 +1376,7 @@ async def process_entering_time(message: Message, state: FSMContext):
 
     data = await state.get_data()
     lang = data.get("language", "ru")
-    scheduled_dt, adjusted = resolve_custom_datetime(datetime.now(), h, m)
+    scheduled_dt, adjusted = resolve_custom_datetime(local_now(), h, m)
 
     out_time = scheduled_dt.strftime("%H:%M")
     out_date = scheduled_dt.strftime("%d.%m.%Y")
@@ -1554,7 +1564,7 @@ async def edit_photo(message: Message, state: FSMContext):
 async def edit_time(message: Message, state: FSMContext):
     lang = (await state.get_data()).get("language", "ru")
     await state.update_data(editing=True); await state.set_state(Order.choosing_time)
-    allow_presets = is_within_working_hours(datetime.now())
+    allow_presets = is_within_working_hours(local_now())
     await message.answer(msg(lang, "time_choice"), reply_markup=kb_time(lang, allow_presets=allow_presets))
 
 @client_router.message(IsClient(), Order.editing, F.text.in_({BTN["ru"]["edit_comment"], BTN["kk"]["edit_comment"]}))
