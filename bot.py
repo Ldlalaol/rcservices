@@ -272,7 +272,7 @@ def is_working_day(dt: datetime) -> bool:
 
 
 def is_within_working_hours(dt: datetime) -> bool:
-    return is_working_day(dt) and WORK_START <= dt.time() <= WORK_END
+    return is_working_day(dt) and WORK_START <= dt.time() < WORK_END
 
 
 def next_working_date(from_dt: datetime) -> datetime:
@@ -285,7 +285,7 @@ def next_working_date(from_dt: datetime) -> datetime:
 def nearest_working_date(now: datetime) -> datetime:
     if not is_working_day(now):
         return next_working_date(now)
-    if now.time() > WORK_END:
+    if now.time() >= WORK_END:
         return next_working_date(now + timedelta(days=1))
     return now
 
@@ -452,13 +452,14 @@ def kb_trash(lang: str):
     ], resize_keyboard=True)
 
 
-def kb_time(lang: str):
+def kb_time(lang: str, allow_presets: bool = True):
     b = BTN.get(lang, BTN["ru"])
-    return ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text=b["time_now"]), KeyboardButton(text=b["time_hour"])],
-        [KeyboardButton(text=b["time_custom"])],
-        [KeyboardButton(text=b["back"]), KeyboardButton(text=b["cancel"])],
-    ], resize_keyboard=True)
+    rows = []
+    if allow_presets:
+        rows.append([KeyboardButton(text=b["time_now"]), KeyboardButton(text=b["time_hour"])])
+    rows.append([KeyboardButton(text=b["time_custom"])])
+    rows.append([KeyboardButton(text=b["back"]), KeyboardButton(text=b["cancel"])])
+    return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
 
 
 def kb_comment(lang: str):
@@ -736,7 +737,8 @@ async def go_to_time(message: Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("language", "ru")
     prompt = msg(lang, "time_choice")
-    await message.answer(prompt, reply_markup=kb_time(lang))
+    allow_presets = is_within_working_hours(datetime.now())
+    await message.answer(prompt, reply_markup=kb_time(lang, allow_presets=allow_presets))
 
 async def ask_photo(message: Message, state: FSMContext):
     data = await state.get_data()
@@ -952,19 +954,19 @@ async def cmd_start(message: Message, state: FSMContext):
     
     # Показываем экран выбора языка
     welcome_text = (
-        "👋 Добро пожаловать в сервис вашего жилого комплекса!\n\n"
-        "⏰ <b>Обратите внимание:</b> услуги выполняются по будням с 09:00 до 18:00.\n"
-        "📅 Суббота и воскресенье — выходные, в эти дни мы не работаем.\n\n"
-        "📌 Пожалуйста, отвечайте кнопками ниже.\n"
-        "📌 Если кнопки не видны, нажмите значок клавиатуры внизу экрана рядом со строкой ввода.\n\n"
-        "Выберите язык 👇\n\n"
-        "─────────────────────\n\n"
         "👋 Өз пәтерінің қызметіне қош келдіңіз!\n\n"
         "⏰ <b>Ескертпе:</b> қызмет тек жұмыс күндері 09:00-ден 18:00-ге дейін орындалады.\n"
         "📅 Сенбі және жексенбі — демалыс, бұл күндері біз жұмыс істемейміз.\n\n"
         "📌 Төмендегі батырмалармен жауап беріңіз.\n"
         "📌 Егер батырмалар көрінбесе, енгізу жолағының жанындағы пернетақта белгісін басыңыз.\n\n"
-        "Тілді таңдаңыз 👇"
+        "Тілді таңдаңыз 👇\n\n"
+        "─────────────────────\n\n"
+        "👋 Добро пожаловать в сервис вашего жилого комплекса!\n\n"
+        "⏰ <b>Обратите внимание:</b> услуги выполняются по будням с 09:00 до 18:00.\n"
+        "📅 Суббота и воскресенье — выходные, в эти дни мы не работаем.\n\n"
+        "📌 Пожалуйста, отвечайте кнопками ниже.\n"
+        "📌 Если кнопки не видны, нажмите значок клавиатуры внизу экрана рядом со строкой ввода.\n\n"
+        "Выберите язык 👇"
     )
     
     lang_kb = ReplyKeyboardMarkup(keyboard=[
@@ -1311,7 +1313,7 @@ async def process_time_preset(message: Message, state: FSMContext):
 
     now = datetime.now()
     if not is_within_working_hours(now):
-        await message.answer(msg(lang, "time_preset_unavailable"), reply_markup=kb_time(lang))
+        await message.answer(msg(lang, "time_preset_unavailable"), reply_markup=kb_time(lang, allow_presets=False))
         return
 
     if message.text.startswith("⚡"):
@@ -1552,7 +1554,8 @@ async def edit_photo(message: Message, state: FSMContext):
 async def edit_time(message: Message, state: FSMContext):
     lang = (await state.get_data()).get("language", "ru")
     await state.update_data(editing=True); await state.set_state(Order.choosing_time)
-    await message.answer(msg(lang, "time_choice"), reply_markup=kb_time(lang))
+    allow_presets = is_within_working_hours(datetime.now())
+    await message.answer(msg(lang, "time_choice"), reply_markup=kb_time(lang, allow_presets=allow_presets))
 
 @client_router.message(IsClient(), Order.editing, F.text.in_({BTN["ru"]["edit_comment"], BTN["kk"]["edit_comment"]}))
 async def edit_comment(message: Message, state: FSMContext):
