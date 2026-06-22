@@ -862,9 +862,19 @@ async def worker_enter_price(message: Message, state: FSMContext, bot: Bot):
     client_lang = order_data.get("language", "ru")
     summary = order_summary(order_data, include_worker_price=True, lang=client_lang)
     if client_lang == "ru":
-        client_text = f"💰 <b>Работник оценил вашу заявку!</b>\n\n{summary}\n\nПодтверждаете заказ?"
+        client_text = (
+            f"💰 <b>Работник оценил вашу заявку!</b>\n\n"
+            f"🔥 <b>ВАША ЦЕНА: {price} ₸</b>\n\n"
+            f"{summary}\n\n"
+            f"Подтверждаете заказ?"
+        )
     else:
-        client_text = f"💰 <b>Қызметкер өтініміңізді бағалады!</b>\n\n{summary}\n\nӨтінімді растайсыз ба?"
+        client_text = (
+            f"💰 <b>Қызметкер өтініміңізді бағалады!</b>\n\n"
+            f"🔥 <b>СІЗДІҢ БАҒАҢЫЗ: {price} ₸</b>\n\n"
+            f"{summary}\n\n"
+            f"Өтінімді растайсыз ба?"
+        )
 
     if photo_ids:
         # Отправляем все фото как медиа-группу (альбом)
