@@ -350,6 +350,7 @@ class Order(StatesGroup):
     entering_time    = State()
     asking_comment   = State()
     entering_comment = State()
+    entering_phone   = State()
     confirming       = State()
     editing          = State()
     waiting_price    = State()
@@ -601,6 +602,8 @@ MESSAGES = {
         "comment_choice": "💬 Хотите добавить комментарий к заявке?",
         "comment_prompt": "✏️ Напишите ваш комментарий",
         "comment_invalid": "⚠️ Выберите вариант с помощью кнопок ниже.",
+        "phone_prompt": "📱 Укажите ваш контактный номер телефона (например, +77071234567)",
+        "phone_invalid": "🚫 Введите корректный номер телефона (например, +77071234567)",
         "confirm_prompt": "<b>Всё верно?</b>",
         "change_lang": "\n\n💬 <i>Чтобы изменить язык, введите /start</i>",
         "summary": "📋 <b>Заявка <code>{order_id}</code></b>",
@@ -645,6 +648,8 @@ MESSAGES = {
         "comment_choice": "💬 Өтіністіге пікір қосқыңыз келе ме?",
         "comment_prompt": "✏️ Өз пікіріңізді жазыңыз",
         "comment_invalid": "⚠️ Төмендегі түймелер арқылы опцияны таңдаңыз.",
+        "phone_prompt": "📱 Байланыс телефоныңызды енгізіңіз (мысалы, +77071234567)",
+        "phone_invalid": "🚫 Дұрыс телефон нөмірін енгізіңіз (мысалы, +77071234567)",
         "confirm_prompt": "<b>Барлық дұрыс па?</b>",
         "change_lang": "\n\n💬 <i>Тілді өзгерту үшін /start енгізіңіз</i>",
         "summary": "📋 <b>Өтіністі <code>{order_id}</code></b>",
@@ -673,6 +678,7 @@ def order_summary(data: dict, include_worker_price: bool = False, lang: str = "r
     bags         = data.get("bags")
     price        = data.get("price", "")
     comment      = data.get("comment", "")
+    phone        = data.get("phone", "")
     time_str     = data.get("order_time", "—")
     worker_price = data.get("worker_price", "")
 
@@ -683,6 +689,7 @@ def order_summary(data: dict, include_worker_price: bool = False, lang: str = "r
         price_line = f"\n💰 Стоимость:      {price}" if price else ""
         wprice_line = f"\n💰 Цена:           {worker_price} ₸" if (include_worker_price and worker_price) else ""
         comm_line = f"\n💬 Комментарий:    {comment}" if comment else ""
+        phone_line = f"\n📱 Телефон:        {phone}" if phone else ""
         title = "📋 <b>Заявка"
         service_label = "📦 Услуга"
         trash_label = "🗑 Тип мусора"
@@ -695,6 +702,7 @@ def order_summary(data: dict, include_worker_price: bool = False, lang: str = "r
         price_line = f"\n💰 Құны:           {price}" if price else ""
         wprice_line = f"\n💰 Бағасы:         {worker_price} ₸" if (include_worker_price and worker_price) else ""
         comm_line = f"\n💬 Пікір:          {comment}" if comment else ""
+        phone_line = f"\n📱 Телефон:        {phone}" if phone else ""
         title = "📋 <b>Өтінім"
         service_label = "📦 Қызмет"
         trash_label = "🗑 Қоқыс түрі"
@@ -715,6 +723,7 @@ def order_summary(data: dict, include_worker_price: bool = False, lang: str = "r
         f"{apt_label}:   {data.get('apt', '—')}\n"
         f"{time_label}:      {time_str}"
         f"{comm_line}"
+        f"{phone_line}"
     )
 
 async def show_confirm(message: Message, state: FSMContext):
@@ -741,6 +750,13 @@ async def go_to_comment(message: Message, state: FSMContext):
     lang = data.get("language", "ru")
     prompt = msg(lang, "comment_choice")
     await message.answer(prompt, reply_markup=kb_comment(lang))
+
+
+async def go_to_phone(message: Message, state: FSMContext):
+    await state.set_state(Order.entering_phone)
+    data = await state.get_data()
+    lang = data.get("language", "ru")
+    await message.answer(msg(lang, "phone_prompt"), reply_markup=kb_nav(lang))
 
 async def go_to_time(message: Message, state: FSMContext):
     await state.set_state(Order.choosing_time)
@@ -1404,7 +1420,7 @@ async def skip_comment(message: Message, state: FSMContext):
     data = await state.get_data()
     if data.get("editing"):
         await state.update_data(editing=False); await show_confirm(message, state); return
-    await show_confirm(message, state)
+    await go_to_phone(message, state)
 
 @client_router.message(IsClient(), Order.asking_comment, F.text.startswith("💬"))
 async def ask_comment_text(message: Message, state: FSMContext):
@@ -1434,6 +1450,34 @@ async def process_comment(message: Message, state: FSMContext):
     data = await state.get_data()
     if data.get("editing"):
         await state.update_data(editing=False); await show_confirm(message, state); return
+    await go_to_phone(message, state)
+
+
+@client_router.message(IsClient(), Order.entering_phone, F.text.startswith("◀️"))
+async def phone_back(message: Message, state: FSMContext):
+    data = await state.get_data()
+    if data.get("editing"):
+        await state.update_data(editing=False); await show_confirm(message, state); return
+    await go_to_comment(message, state)
+
+
+@client_router.message(IsClient(), Order.entering_phone)
+async def process_phone(message: Message, state: FSMContext):
+    raw = message.text.strip()
+    normalized = "".join(ch for ch in raw if ch.isdigit() or ch == "+")
+    data = await state.get_data()
+    lang = data.get("language", "ru")
+
+    # Простейшая валидация: допускаем + и 10-15 цифр
+    digits_only = "".join(ch for ch in normalized if ch.isdigit())
+    if len(digits_only) < 10 or len(digits_only) > 15:
+        await message.answer(msg(lang, "phone_invalid"), reply_markup=kb_nav(lang))
+        return
+
+    if not normalized.startswith("+"):
+        normalized = "+" + digits_only
+
+    await state.update_data(phone=normalized)
     await show_confirm(message, state)
 
 # ── Подтверждение заявки ──────────────────────────────────
